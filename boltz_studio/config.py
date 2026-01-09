@@ -3,11 +3,16 @@
 from pathlib import Path
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BOLTZ_STUDIO_",
+        case_sensitive=False,
+    )
 
     # Server
     host: str = "0.0.0.0"
@@ -29,10 +34,6 @@ class Settings(BaseSettings):
 
     # Rate limiting
     requests_per_minute: int = 10
-
-    class Config:
-        env_prefix = "BOLTZ_STUDIO_"
-        case_sensitive = False
 
 
 @lru_cache

@@ -3,9 +3,10 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from ..logger import get_logger
+from ..middleware.rate_limit import rate_limit_dependency
 from ..models import PredictionRequest
 from ..services import BoltzRunner, JobStore, get_job_store
 
@@ -28,14 +29,19 @@ def get_runner(store: JobStore = Depends(get_job_store)) -> BoltzRunner:
 @router.post("/predict")
 async def predict(
     request: PredictionRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     store: JobStore = Depends(get_job_store),
     runner: BoltzRunner = Depends(get_runner),
+    _: None = Depends(rate_limit_dependency()),
 ) -> dict[str, str]:
     """Submit a structure prediction job.
 
+    Rate limited to prevent abuse.
+
     Args:
         request: Prediction request with sequences
+        http_request: HTTP request for rate limiting
         background_tasks: FastAPI background tasks
         store: Job store instance
         runner: Boltz runner instance

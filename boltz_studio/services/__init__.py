@@ -4,6 +4,7 @@ from .boltz_runner import BoltzRunner
 from .cleanup import cleanup_old_jobs, start_cleanup_task
 from .database import get_connection, init_db
 from .job_store import JobStore, get_job_store
+from .model_manager import ModelManager, get_model_manager
 from .output_parser import OutputParser
 from .progress_manager import ProgressManager, get_progress_manager
 
@@ -12,9 +13,11 @@ __all__ = [
     "cleanup_old_jobs",
     "get_connection",
     "get_job_store",
+    "get_model_manager",
     "get_progress_manager",
     "init_db",
     "JobStore",
+    "ModelManager",
     "OutputParser",
     "ProgressManager",
     "start_cleanup_task",

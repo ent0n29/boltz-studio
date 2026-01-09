@@ -22,7 +22,7 @@ dependencies = [
 boltz-studio = "boltz_studio.main:main"
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest"]
+dev = ["ruff", "pytest", "pytest-asyncio", "httpx"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -30,3 +30,8 @@ include = ["boltz_studio*"]
 
 [tool.setuptools.package-data]
 boltz_studio = ["static/**/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
