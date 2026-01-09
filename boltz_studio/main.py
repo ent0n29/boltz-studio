@@ -1,11 +1,12 @@
 """Entry point for Boltz Studio."""
 
 import threading
+import time
 import webbrowser
 
 import uvicorn
 
-from .config import HOST, PORT
+from .config import settings
 
 
 BANNER = """
@@ -18,17 +19,16 @@ BANNER = """
 """
 
 
-def open_browser():
+def open_browser() -> None:
     """Open browser after short delay."""
-    import time
     time.sleep(1.5)
-    webbrowser.open(f"http://localhost:{PORT}")
+    webbrowser.open(f"http://localhost:{settings.port}")
 
 
-def main():
+def main() -> None:
     """Run Boltz Studio server."""
     print(BANNER)
-    print(f"Starting Boltz Studio on http://localhost:{PORT}")
+    print(f"Starting Boltz Studio on http://localhost:{settings.port}")
     print()
     print("Press Ctrl+C to stop")
     print()
@@ -40,8 +40,8 @@ def main():
     uvicorn.run(
         "boltz_studio.app:create_app",
         factory=True,
-        host=HOST,
-        port=PORT,
+        host=settings.host,
+        port=settings.port,
         log_level="info",
     )
 

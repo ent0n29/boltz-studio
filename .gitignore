@@ -171,3 +171,6 @@ frontend/dist/
 
 # Boltz prediction outputs
 boltz_results_*/
+
+# Boltz Studio database
+*.db
