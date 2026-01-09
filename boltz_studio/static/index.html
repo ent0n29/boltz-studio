@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boltz Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://3dmol.org/build/3Dmol-min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+            </svg>
+            boltz studio
+        </div>
+        <nav>
+            <a href="https://github.com/jwohlwend/boltz" target="_blank">GitHub</a>
+            <a href="https://github.com/jwohlwend/boltz#readme" target="_blank">Docs</a>
+        </nav>
+    </header>
+
+    <main>
+        <aside class="sidebar">
+            <div class="section-label">Structure Prediction</div>
+            <h1>Predict Protein Structure</h1>
+            <p class="subtitle">
+                Enter a protein sequence to predict its 3D structure using Boltz-2, an open-source diffusion model for biomolecular structure prediction.
+            </p>
+
+            <div class="input-group">
+                <label class="input-label">Amino Acid Sequence</label>
+                <textarea
+                    id="sequence"
+                    class="sequence-input"
+                    placeholder="MKLAVLKAGI..."
+                    spellcheck="false"
+                >MKLAVLKAGIAQGEVLVN</textarea>
+                <div class="input-meta">
+                    <span><span id="seq-length">18</span> residues</span>
+                    <span id="avg-plddt-display" style="display:none;">avg pLDDT: <span id="avg-plddt">-</span></span>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" id="predict-btn" onclick="predict()">
+                    Predict Structure ->
+                </button>
+                <button class="btn btn-outline" onclick="randomMutate()">
+                    Random Mutation
+                </button>
+            </div>
+
+            <div class="progress-container" id="progress-container">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                </div>
+                <div class="progress-text" id="progress-text">Initializing...</div>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <div class="metrics-grid" id="metrics">
+                <div class="metric-card">
+                    <div class="metric-value" id="metric-confidence">-</div>
+                    <div class="metric-label">Confidence</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="metric-plddt">-</div>
+                    <div class="metric-label">pLDDT</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="metric-ptm">-</div>
+                    <div class="metric-label">pTM</div>
+                </div>
+            </div>
+        </aside>
+
+        <div class="viewer-area">
+            <div id="viewer"></div>
+
+            <div class="placeholder" id="placeholder">
+                <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                </svg>
+                <p class="placeholder-text">No structure yet</p>
+                <p class="placeholder-hint">Enter a sequence and click predict</p>
+            </div>
+
+            <div class="legend" id="legend">
+                <div class="legend-title">Confidence (pLDDT)</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#0053D6"></span> Very high (>90)</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#65CBF3"></span> High (70-90)</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#FFDB13"></span> Medium (50-70)</div>
+                <div class="legend-item"><span class="legend-dot" style="background:#FF7D45"></span> Low (<50)</div>
+            </div>
+
+            <div class="controls-hint" id="controls-hint">drag to rotate · scroll to zoom</div>
+        </div>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
