@@ -1,9 +1,11 @@
 """Run Boltz predictions."""
 
 import asyncio
+import pickle
 import shutil
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +22,7 @@ logger = get_logger("boltz_runner")
 
 
 class BoltzRunner:
-    """Execute Boltz predictions via CLI or direct API."""
+    """Execute Boltz predictions via direct API or CLI."""
 
     def __init__(self, job_store: JobStore) -> None:
         """Initialize runner with job store.
@@ -52,31 +54,37 @@ class BoltzRunner:
         Returns:
             Accelerator string: 'gpu' or 'cpu'
         """
-        import torch
+        try:
+            import torch
 
-        if torch.backends.mps.is_available():
-            logger.info("Using MPS (Apple Silicon GPU)")
-            return "gpu"  # PyTorch routes to MPS on Apple Silicon
-        elif torch.cuda.is_available():
-            logger.info("Using CUDA GPU")
-            return "gpu"
+            if torch.backends.mps.is_available():
+                logger.info("Using MPS (Apple Silicon GPU)")
+                return "gpu"
+            elif torch.cuda.is_available():
+                logger.info("Using CUDA GPU")
+                return "gpu"
+        except ImportError:
+            logger.warning("torch not available, defaulting to CPU")
         logger.info("Using CPU")
         return "cpu"
 
     @staticmethod
-    def find_boltz_cmd() -> str:
+    def find_boltz_cmd() -> str | None:
         """Find boltz CLI executable.
 
         Returns:
-            Path to boltz command
+            Path to boltz command, or None if not found
         """
         cmd = shutil.which("boltz")
         if cmd:
             return cmd
-        return str(Path(sys.executable).parent / "boltz")
+        venv_boltz = Path(sys.executable).parent / "boltz"
+        if venv_boltz.exists():
+            return str(venv_boltz)
+        return None
 
     def generate_yaml(self, request: PredictionRequest, work_dir: Path) -> Path:
-        """Generate YAML input file for Boltz CLI.
+        """Generate YAML input file for Boltz.
 
         Args:
             request: Prediction request
@@ -113,7 +121,7 @@ class BoltzRunner:
     async def _run_direct(self, job_id: str, request: PredictionRequest) -> None:
         """Run prediction using direct Boltz Python API.
 
-        This is faster as it keeps the model loaded in memory.
+        This properly integrates with Boltz's data pipeline.
 
         Args:
             job_id: Job identifier
@@ -121,18 +129,25 @@ class BoltzRunner:
         """
         try:
             logger.info(f"Starting prediction (direct API) for job {job_id}")
-            await self._update_and_broadcast(job_id, status="running", progress=0.1)
+            await self._update_and_broadcast(job_id, status="running", progress=0.05)
 
-            # Load model (cached after first call)
+            # Get event loop for progress updates from sync thread
             loop = asyncio.get_event_loop()
-            await self._update_and_broadcast(job_id, progress=0.2)
 
-            # Run prediction in thread pool to not block event loop
+            # Progress callback for sync function
+            def update_progress(progress: float) -> None:
+                asyncio.run_coroutine_threadsafe(
+                    self._update_and_broadcast(job_id, progress=progress),
+                    loop
+                )
+
+            # Run in thread pool to not block event loop
             result = await loop.run_in_executor(
                 None,
-                self._predict_sync,
+                self._predict_direct_sync,
                 request,
                 job_id,
+                update_progress,
             )
 
             await self._update_and_broadcast(
@@ -147,54 +162,283 @@ class BoltzRunner:
             logger.exception(f"Prediction (direct API) failed for job {job_id}")
             await self._update_and_broadcast(job_id, status="failed", error=str(e))
 
-    def _predict_sync(self, request: PredictionRequest, job_id: str) -> dict[str, Any]:
-        """Synchronous prediction using Boltz API.
-
-        This runs in a thread pool executor.
+    def _predict_direct_sync(
+        self,
+        request: PredictionRequest,
+        job_id: str,
+        update_progress: callable,
+    ) -> dict[str, Any]:
+        """Synchronous prediction using Boltz's internal API.
 
         Args:
             request: Prediction request
-            job_id: Job identifier for temp directory naming
+            job_id: Job identifier
+            update_progress: Callback to update progress (0.0 to 1.0)
 
         Returns:
             Prediction result dictionary
         """
         import torch
+        from pytorch_lightning import Trainer
+        from rdkit import Chem
+
+        from boltz.data.module.inferencev2 import Boltz2InferenceDataModule
+        from boltz.data.mol import load_canonicals
+        from boltz.data.parse.yaml import parse_yaml
+        from boltz.data.types import MSA, Manifest
+        from boltz.data.write.writer import BoltzWriter
+        from boltz.data import const
+
+        # Suppress warnings
+        warnings.filterwarnings(
+            "ignore", ".*that has Tensor Cores.*"
+        )
+
+        # Set torch settings
+        torch.set_grad_enabled(False)
+        torch.set_float32_matmul_precision("highest")
+        Chem.SetDefaultPickleProperties(Chem.PropertyPickleOptions.AllProps)
+
+        # Get cache and create work directory
+        update_progress(0.10)  # 10% - Starting
+        cache = self.model_manager.get_cache_path()
+        work_dir = Path(tempfile.mkdtemp(prefix=f"boltz_{job_id}_"))
+        out_dir = work_dir / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Work directory: {work_dir}")
+
+        # Generate YAML input
+        yaml_file = self.generate_yaml(request, work_dir)
+
+        # Load CCD data
+        mol_dir = cache / "mols"
+        ccd = load_canonicals(mol_dir)
+
+        # Parse YAML to get target
+        target = parse_yaml(yaml_file, ccd, mol_dir, boltz2=True)
+        target_id = target.record.id
+
+        # Create output directories
+        msa_dir = out_dir / "msa"
+        records_dir = out_dir / "processed" / "records"
+        structure_dir = out_dir / "processed" / "structures"
+        processed_msa_dir = out_dir / "processed" / "msa"
+        processed_constraints_dir = out_dir / "processed" / "constraints"
+        processed_templates_dir = out_dir / "processed" / "templates"
+        processed_mols_dir = out_dir / "processed" / "mols"
+        predictions_dir = out_dir / "predictions"
+
+        for d in [
+            msa_dir, records_dir, structure_dir, processed_msa_dir,
+            processed_constraints_dir, processed_templates_dir,
+            processed_mols_dir, predictions_dir
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+
+        # Handle MSA generation
+        prot_id = const.chain_type_ids["PROTEIN"]
+        to_generate = {}
+        for chain in target.record.chains:
+            if (chain.mol_type == prot_id) and (chain.msa_id == 0):
+                entity_id = chain.entity_id
+                msa_id = f"{target_id}_{entity_id}"
+                to_generate[msa_id] = target.sequences[entity_id]
+                chain.msa_id = msa_dir / f"{msa_id}.csv"
+            elif chain.msa_id == 0:
+                chain.msa_id = -1
+
+        # Generate MSA using server
+        if to_generate:
+            update_progress(0.20)  # 20% - Starting MSA generation
+            logger.info(f"Generating MSA for {len(to_generate)} protein entities")
+            self._compute_msa(
+                data=to_generate,
+                target_id=target_id,
+                msa_dir=msa_dir,
+            )
+            update_progress(0.45)  # 45% - MSA complete
+
+        # Process MSA data
+        msas = sorted({c.msa_id for c in target.record.chains if c.msa_id != -1})
+        msa_id_map = {}
+        for msa_idx, msa_id in enumerate(msas):
+            msa_path = Path(msa_id)
+            if not msa_path.exists():
+                raise FileNotFoundError(f"MSA file {msa_path} not found")
+
+            processed = processed_msa_dir / f"{target_id}_{msa_idx}.npz"
+            msa_id_map[msa_id] = f"{target_id}_{msa_idx}"
+
+            if not processed.exists():
+                from boltz.data.parse.csv import parse_csv
+                msa: MSA = parse_csv(msa_path, max_seqs=8192)
+                msa.dump(processed)
+
+        # Update chain MSA references
+        for c in target.record.chains:
+            if (c.msa_id != -1) and (c.msa_id in msa_id_map):
+                c.msa_id = msa_id_map[c.msa_id]
+
+        # Dump templates
+        for template_id, template in target.templates.items():
+            name = f"{target.record.id}_{template_id}.npz"
+            template_path = processed_templates_dir / name
+            template.dump(template_path)
+
+        # Dump constraints
+        constraints_path = processed_constraints_dir / f"{target.record.id}.npz"
+        target.residue_constraints.dump(constraints_path)
+
+        # Dump extra molecules
+        with (processed_mols_dir / f"{target.record.id}.pkl").open("wb") as f:
+            pickle.dump(target.extra_mols, f)
+
+        # Dump structure
+        struct_path = structure_dir / f"{target.record.id}.npz"
+        target.structure.dump(struct_path)
+
+        # Dump record
+        record_path = records_dir / f"{target.record.id}.json"
+        target.record.dump(record_path)
+
+        # Create manifest
+        manifest = Manifest([target.record])
+        manifest.dump(out_dir / "processed" / "manifest.json")
+
+        update_progress(0.55)  # 55% - Data preprocessing complete
+        logger.info("Data preprocessing complete, running prediction...")
+
+        # Create data module
+        data_module = Boltz2InferenceDataModule(
+            manifest=manifest,
+            target_dir=structure_dir,
+            msa_dir=processed_msa_dir,
+            mol_dir=mol_dir,
+            num_workers=0,  # Use 0 for sync operation
+            constraints_dir=processed_constraints_dir,
+            template_dir=processed_templates_dir,
+            extra_mols_dir=processed_mols_dir,
+            override_method=None,
+        )
 
         # Get cached model
+        update_progress(0.65)  # 65% - Loading model
         model = self.model_manager.get_model()
+        update_progress(0.75)  # 75% - Model ready
 
-        # Create temp directory for outputs
-        work_dir = Path(tempfile.mkdtemp(prefix=f"boltz_{job_id}_"))
+        # Create prediction writer
+        pred_writer = BoltzWriter(
+            data_dir=structure_dir,
+            output_dir=predictions_dir,
+            output_format="pdb",
+            boltz2=True,
+            write_embeddings=False,
+        )
 
-        # Prepare input data
-        sequences = []
-        for seq in request.sequences:
-            sequences.append({
-                "id": seq.id,
-                "sequence": seq.sequence,
-                "type": seq.type,
-            })
+        # Create trainer
+        accelerator = self.model_manager._get_accelerator()
+        trainer = Trainer(
+            default_root_dir=out_dir,
+            strategy="auto",
+            callbacks=[pred_writer],
+            accelerator=accelerator,
+            devices=1,
+            precision="bf16-mixed",
+            logger=False,
+            enable_progress_bar=False,
+        )
 
         # Run prediction
-        with torch.no_grad():
-            # Note: Actual Boltz API call would go here
-            # This is a placeholder - actual implementation depends on Boltz API
-            model.predict(
-                sequences=sequences,
-                out_dir=work_dir,
-                recycling_steps=request.recycling_steps,
-                sampling_steps=request.sampling_steps,
-                diffusion_samples=request.diffusion_samples,
-            )
+        update_progress(0.80)  # 80% - Running prediction
+        trainer.predict(
+            model,
+            datamodule=data_module,
+            return_predictions=False,
+        )
+        update_progress(0.95)  # 95% - Prediction complete
+
+        logger.info("Prediction complete, parsing outputs...")
 
         # Parse outputs
-        output_dir = work_dir / "predictions" / request.name
+        output_dir = predictions_dir / request.name
         return {
             "structure_pdb": self.parser.parse_pdb(output_dir),
             "confidence": self.parser.parse_confidence(output_dir),
             "plddt_per_residue": self.parser.parse_plddt(output_dir),
         }
+
+    def _compute_msa(
+        self,
+        data: dict[str, str],
+        target_id: str,
+        msa_dir: Path,
+    ) -> None:
+        """Compute MSA using MMseqs2 server.
+
+        Args:
+            data: Dictionary of sequence ID to sequence
+            target_id: Target identifier
+            msa_dir: Directory to save MSA files
+        """
+        from boltz.data.msa.mmseqs2 import run_mmseqs2
+        from boltz.data import const
+
+        msa_server_url = "https://api.colabfold.com"
+        msa_pairing_strategy = "greedy"
+
+        logger.info(f"Calling MSA server for {len(data)} sequences")
+
+        if len(data) > 1:
+            paired_msas = run_mmseqs2(
+                list(data.values()),
+                msa_dir / f"{target_id}_paired_tmp",
+                use_env=True,
+                use_pairing=True,
+                host_url=msa_server_url,
+                pairing_strategy=msa_pairing_strategy,
+            )
+        else:
+            paired_msas = [""] * len(data)
+
+        unpaired_msa = run_mmseqs2(
+            list(data.values()),
+            msa_dir / f"{target_id}_unpaired_tmp",
+            use_env=True,
+            use_pairing=False,
+            host_url=msa_server_url,
+            pairing_strategy=msa_pairing_strategy,
+        )
+
+        for idx, name in enumerate(data):
+            # Get paired sequences
+            paired = paired_msas[idx].strip().splitlines()
+            paired = paired[1::2]  # ignore headers
+            paired = paired[: const.max_paired_seqs]
+
+            # Set key per row and remove empty sequences
+            keys = [idx for idx, s in enumerate(paired) if s != "-" * len(s)]
+            paired = [s for s in paired if s != "-" * len(s)]
+
+            # Combine paired-unpaired sequences
+            unpaired = unpaired_msa[idx].strip().splitlines()
+            unpaired = unpaired[1::2]
+            unpaired = unpaired[: (const.max_msa_seqs - len(paired))]
+            if paired:
+                unpaired = unpaired[1:]  # ignore query if already present
+
+            # Combine
+            seqs = paired + unpaired
+            keys = keys + [-1] * len(unpaired)
+
+            # Dump MSA
+            csv_str = ["key,sequence"] + [f"{key},{seq}" for key, seq in zip(keys, seqs)]
+
+            msa_path = msa_dir / f"{name}.csv"
+            with msa_path.open("w") as f:
+                f.write("\n".join(csv_str))
+
+        logger.info("MSA generation complete")
 
     async def _run_cli(self, job_id: str, request: PredictionRequest) -> None:
         """Run prediction using Boltz CLI (fallback mode).
@@ -216,9 +460,15 @@ class BoltzRunner:
             await self._update_and_broadcast(job_id, progress=0.2)
 
             # Build command
+            boltz_cmd = self.find_boltz_cmd()
+            if boltz_cmd is None:
+                raise RuntimeError(
+                    "Boltz not installed. Install with: pip install boltz"
+                )
+
             accelerator = self.detect_accelerator()
             cmd = [
-                self.find_boltz_cmd(),
+                boltz_cmd,
                 "predict",
                 str(yaml_file),
                 "--out_dir", str(work_dir / "output"),
