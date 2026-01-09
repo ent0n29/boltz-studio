@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import PACKAGE_ROOT
 from .logger import logger
-from .routes import design_router, prediction_router
+from .routes import design_router, prediction_router, websocket_router
 from .services import start_cleanup_task
 from .services.database import init_db
 
@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(prediction_router)
     app.include_router(design_router)
+    app.include_router(websocket_router)
 
     # Mount static files
     static_dir = PACKAGE_ROOT / "static"

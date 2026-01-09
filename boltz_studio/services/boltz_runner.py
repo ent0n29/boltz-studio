@@ -13,6 +13,7 @@ from ..logger import get_logger
 from ..models import PredictionRequest
 from .job_store import JobStore
 from .output_parser import OutputParser
+from .progress_manager import get_progress_manager
 
 logger = get_logger("boltz_runner")
 
@@ -28,6 +29,19 @@ class BoltzRunner:
         """
         self.job_store = job_store
         self.parser = OutputParser()
+        self.progress_manager = get_progress_manager()
+
+    async def _update_and_broadcast(self, job_id: str, **kwargs: Any) -> None:
+        """Update job in store and broadcast to WebSocket subscribers.
+
+        Args:
+            job_id: Job identifier
+            **kwargs: Fields to update
+        """
+        self.job_store.update(job_id, **kwargs)
+        job = self.job_store.get(job_id)
+        if job:
+            await self.progress_manager.broadcast(job_id, job)
 
     @staticmethod
     def detect_accelerator() -> str:
@@ -91,7 +105,7 @@ class BoltzRunner:
         """
         try:
             logger.info(f"Starting prediction for job {job_id}")
-            self.job_store.update(job_id, status="running", progress=0.1)
+            await self._update_and_broadcast(job_id, status="running", progress=0.1)
 
             # Create temp directory
             work_dir = Path(tempfile.mkdtemp(prefix=f"boltz_{job_id}_"))
@@ -99,7 +113,7 @@ class BoltzRunner:
 
             # Generate input
             yaml_file = self.generate_yaml(request, work_dir)
-            self.job_store.update(job_id, progress=0.2)
+            await self._update_and_broadcast(job_id, progress=0.2)
 
             # Build command
             accelerator = self.detect_accelerator()
@@ -117,7 +131,7 @@ class BoltzRunner:
             ]
 
             logger.info(f"Executing: {' '.join(cmd[:3])}...")
-            self.job_store.update(job_id, progress=0.3)
+            await self._update_and_broadcast(job_id, progress=0.3)
 
             # Execute
             process = await asyncio.create_subprocess_exec(
@@ -134,7 +148,7 @@ class BoltzRunner:
                 logger.error(f"Boltz failed for job {job_id}: {error_msg}")
                 raise Exception(f"Boltz failed: {error_msg}")
 
-            self.job_store.update(job_id, progress=0.9)
+            await self._update_and_broadcast(job_id, progress=0.9)
 
             # Parse outputs
             output_dir = (
@@ -148,7 +162,7 @@ class BoltzRunner:
                 "plddt_per_residue": self.parser.parse_plddt(output_dir),
             }
 
-            self.job_store.update(
+            await self._update_and_broadcast(
                 job_id,
                 status="completed",
                 progress=1.0,
@@ -158,4 +172,4 @@ class BoltzRunner:
 
         except Exception as e:
             logger.exception(f"Prediction failed for job {job_id}")
-            self.job_store.update(job_id, status="failed", error=str(e))
+            await self._update_and_broadcast(job_id, status="failed", error=str(e))

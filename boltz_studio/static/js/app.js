@@ -2,7 +2,7 @@
 
 let viewer = null;
 let currentJobId = null;
-let pollInterval = null;
+let currentWebSocket = null;
 let plddt = [];
 
 // DOM Elements
@@ -15,6 +15,91 @@ sequenceInput.addEventListener('input', (e) => {
     e.target.value = seq;
     seqLengthEl.textContent = seq.length;
 });
+
+// WebSocket connection for real-time updates
+function connectWebSocket(jobId) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/job/${jobId}`);
+
+    ws.onopen = () => {
+        console.log(`WebSocket connected for job ${jobId}`);
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleJobUpdate(data);
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        // Fallback to polling if WebSocket fails
+        startPolling(jobId);
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket closed');
+        currentWebSocket = null;
+    };
+
+    return ws;
+}
+
+// Handle job status updates (from WebSocket or polling)
+function handleJobUpdate(data) {
+    if (data.status === 'running') {
+        const pct = Math.round((data.progress || 0.3) * 100);
+        showProgress(pct, `Generating structure... ${pct}%`);
+    }
+
+    if (data.status === 'completed') {
+        closeWebSocket();
+        setLoading(false);
+        hideProgress();
+
+        if (data.result) {
+            plddt = data.result.plddt_per_residue || [];
+            showStructure(data.result.structure_pdb);
+            updateMetrics(data.result.confidence);
+        }
+    }
+
+    if (data.status === 'failed') {
+        closeWebSocket();
+        setLoading(false);
+        hideProgress();
+        showError(data.error || 'Prediction failed');
+    }
+}
+
+function closeWebSocket() {
+    if (currentWebSocket) {
+        currentWebSocket.close();
+        currentWebSocket = null;
+    }
+}
+
+// Fallback polling (if WebSocket fails)
+let pollInterval = null;
+
+function startPolling(jobId) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => pollJob(jobId), 2000);
+}
+
+async function pollJob(jobId) {
+    try {
+        const res = await fetch(`/api/job/${jobId}`);
+        const data = await res.json();
+        handleJobUpdate(data);
+
+        if (data.status === 'completed' || data.status === 'failed') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
 
 // API Functions
 async function predict() {
@@ -40,44 +125,14 @@ async function predict() {
         });
         const data = await res.json();
         currentJobId = data.job_id;
-        pollInterval = setInterval(pollJob, 2000);
+
+        // Connect via WebSocket for real-time updates
+        closeWebSocket();
+        currentWebSocket = connectWebSocket(currentJobId);
+
     } catch (err) {
         showError(err.message);
         setLoading(false);
-    }
-}
-
-async function pollJob() {
-    if (!currentJobId) return;
-    try {
-        const res = await fetch(`/api/job/${currentJobId}`);
-        const data = await res.json();
-
-        if (data.status === 'running') {
-            const pct = Math.round((data.progress || 0.3) * 100);
-            showProgress(pct, `Generating structure... ${pct}%`);
-        }
-
-        if (data.status === 'completed') {
-            clearInterval(pollInterval);
-            setLoading(false);
-            hideProgress();
-
-            if (data.result) {
-                plddt = data.result.plddt_per_residue || [];
-                showStructure(data.result.structure_pdb);
-                updateMetrics(data.result.confidence);
-            }
-        }
-
-        if (data.status === 'failed') {
-            clearInterval(pollInterval);
-            setLoading(false);
-            hideProgress();
-            showError(data.error || 'Prediction failed');
-        }
-    } catch (err) {
-        console.error(err);
     }
 }
 
