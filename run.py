@@ -35,8 +35,7 @@ except ImportError:
 # ============================================================================
 
 PORT = 8000
-BOLTZ_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(BOLTZ_ROOT))
+STUDIO_ROOT = Path(__file__).parent
 
 # ============================================================================
 # FastAPI App
@@ -125,7 +124,7 @@ async def run_boltz_prediction(job_id: str, request: PredictionRequest):
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(BOLTZ_ROOT)
+            cwd=str(work_dir)
         )
 
         stdout, stderr = await process.communicate()
@@ -891,7 +890,7 @@ def main():
 
     """)
     print(f"Starting BoltzStudio on http://localhost:{PORT}")
-    print(f"Boltz root: {BOLTZ_ROOT}")
+    print(f"Studio root: {STUDIO_ROOT}")
     print()
     print("Press Ctrl+C to stop")
     print()
