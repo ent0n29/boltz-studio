@@ -16,6 +16,7 @@ async function checkAuth() {
 
 function updateAuthUI() {
     const authContainer = document.getElementById('auth-container');
+    const notificationContainer = document.getElementById('notification-container');
     const saveBtn = document.getElementById('save-btn');
     const commentForm = document.getElementById('comment-form');
 
@@ -40,6 +41,16 @@ function updateAuthUI() {
             </div>
         `;
 
+        // Show notification bell
+        if (notificationContainer) {
+            notificationContainer.style.display = 'block';
+        }
+
+        // Initialize notifications
+        if (typeof initNotifications === 'function') {
+            initNotifications();
+        }
+
         // Show save button if there's a prediction
         if (saveBtn && window.currentPdbData) {
             saveBtn.style.display = 'block';
@@ -53,6 +64,11 @@ function updateAuthUI() {
         authContainer.innerHTML = `
             <button class="btn btn-outline" id="login-btn" onclick="showLoginModal()">Sign In</button>
         `;
+
+        // Hide notification bell
+        if (notificationContainer) {
+            notificationContainer.style.display = 'none';
+        }
 
         // Hide save button
         if (saveBtn) {

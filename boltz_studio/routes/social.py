@@ -20,6 +20,7 @@ from ..models import (
     ForkRequest,
 )
 from ..services.design_store import DesignStore, get_design_store
+from ..services.notification_store import NotificationStore, get_notification_store
 from ..services.social_store import SocialStore, get_social_store
 
 logger = get_logger("routes.social")
@@ -38,6 +39,7 @@ async def star_design(
     user: RequiredUser,
     social_store: SocialStore = Depends(get_social_store),
     design_store: DesignStore = Depends(get_design_store),
+    notification_store: NotificationStore = Depends(get_notification_store),
 ) -> dict:
     """Star a design."""
     # Verify design exists and is public
@@ -46,6 +48,15 @@ async def star_design(
         raise HTTPException(status_code=404, detail="Design not found")
 
     if social_store.add_star(design_id, user.id):
+        # Notify design owner
+        notification_store.create(
+            user_id=design.author_id,
+            notification_type="star",
+            message=f"{user.display_name} starred your design \"{design.name}\"",
+            actor_id=user.id,
+            target_type="design",
+            target_id=design_id,
+        )
         return {"message": "Design starred"}
     return {"message": "Already starred"}
 
@@ -85,6 +96,7 @@ async def fork_design(
     user: RequiredUser,
     social_store: SocialStore = Depends(get_social_store),
     design_store: DesignStore = Depends(get_design_store),
+    notification_store: NotificationStore = Depends(get_notification_store),
 ) -> dict:
     """Fork a design.
 
@@ -116,6 +128,16 @@ async def fork_design(
 
     # Record the fork relationship
     social_store.create_fork(design_id, user.id, fork_design_id, request)
+
+    # Notify design owner
+    notification_store.create(
+        user_id=parent.author_id,
+        notification_type="fork",
+        message=f"{user.display_name} forked your design \"{parent.name}\"",
+        actor_id=user.id,
+        target_type="design",
+        target_id=fork_design_id,
+    )
 
     return {
         "message": "Design forked successfully",
@@ -160,13 +182,27 @@ async def create_comment(
     user: RequiredUser,
     social_store: SocialStore = Depends(get_social_store),
     design_store: DesignStore = Depends(get_design_store),
+    notification_store: NotificationStore = Depends(get_notification_store),
 ) -> dict:
     """Add a comment to a design."""
     # Verify design exists
-    if not design_store.get_public(design_id):
+    design = design_store.get_public(design_id)
+    if not design:
         raise HTTPException(status_code=404, detail="Design not found")
 
     comment_id = social_store.create_comment(design_id, user.id, comment)
+
+    # Notify design owner
+    preview = comment.content[:50] + "..." if len(comment.content) > 50 else comment.content
+    notification_store.create(
+        user_id=design.author_id,
+        notification_type="comment",
+        message=f"{user.display_name} commented on \"{design.name}\": {preview}",
+        actor_id=user.id,
+        target_type="design",
+        target_id=design_id,
+    )
+
     return {"id": comment_id, "message": "Comment created"}
 
 

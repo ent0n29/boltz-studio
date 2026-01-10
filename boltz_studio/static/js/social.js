@@ -54,6 +54,16 @@ async function showDesignModal(designId) {
 
         // Load comments
         loadComments(designId);
+
+        // Record view event
+        if (typeof recordDesignView === 'function') {
+            recordDesignView(designId);
+        }
+
+        // Load similar designs
+        if (typeof loadSimilarDesigns === 'function') {
+            loadSimilarDesigns(designId);
+        }
     } catch (err) {
         console.error('Failed to load design:', err);
     }

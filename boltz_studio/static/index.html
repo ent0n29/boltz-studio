@@ -32,6 +32,24 @@
             <div class="header-divider"></div>
             <a href="https://github.com/jwohlwend/boltz" target="_blank">GitHub</a>
             <a href="https://github.com/jwohlwend/boltz#readme" target="_blank">Docs</a>
+            <div id="notification-container" style="display: none;">
+                <button class="notification-bell" id="notification-bell" onclick="toggleNotifications()">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+                </button>
+                <div class="notifications-panel" id="notifications-panel">
+                    <div class="notifications-header">
+                        <h3>Notifications</h3>
+                        <button class="btn btn-text" onclick="markAllNotificationsRead()">Mark all read</button>
+                    </div>
+                    <div class="notifications-list" id="notifications-list">
+                        <!-- Notifications loaded dynamically -->
+                    </div>
+                </div>
+            </div>
             <div id="auth-container">
                 <button class="btn btn-outline" id="login-btn" onclick="showLoginModal()">Sign In</button>
             </div>
@@ -279,6 +297,9 @@
                         <label>Sequence</label>
                         <div class="sequence-display" id="design-modal-sequence">MKLAVLKAGI...</div>
                         <button class="btn btn-outline" onclick="copySequence()">Copy Sequence</button>
+                    </div>
+                    <div id="similar-designs">
+                        <!-- Similar designs loaded dynamically -->
                     </div>
                 </div>
             </div>
@@ -541,6 +562,21 @@
                         </svg>
                         All Designs
                     </button>
+                    <button class="view-tab" data-view="trending" onclick="switchToTrending()">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                            <polyline points="17 6 23 6 23 12"/>
+                        </svg>
+                        Trending
+                    </button>
+                    <button class="view-tab" data-view="leaderboard" onclick="switchToLeaderboard()">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M8 21V11H4v10h4z"/>
+                            <path d="M14 21V7h-4v14h4z"/>
+                            <path d="M20 21V3h-4v18h4z"/>
+                        </svg>
+                        Leaderboard
+                    </button>
                     <button class="view-tab" data-view="starred" onclick="switchCommunityView('starred')">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
@@ -598,6 +634,42 @@
                         <!-- Collections loaded dynamically -->
                     </div>
                 </div>
+
+                <!-- Trending View -->
+                <div class="community-view" id="trending-view" style="display: none;">
+                    <div class="trending-header">
+                        <div class="trending-window-buttons">
+                            <button class="trending-window-btn" data-window="day" onclick="switchTrendingWindow('day')">Today</button>
+                            <button class="trending-window-btn active" data-window="week" onclick="switchTrendingWindow('week')">This Week</button>
+                            <button class="trending-window-btn" data-window="month" onclick="switchTrendingWindow('month')">This Month</button>
+                        </div>
+                    </div>
+                    <div class="designs-grid" id="trending-grid">
+                        <!-- Trending designs loaded dynamically -->
+                    </div>
+                    <div class="load-more" id="load-more-trending">
+                        <button class="btn btn-outline" onclick="loadMoreTrending()">Load More</button>
+                    </div>
+                </div>
+
+                <!-- Leaderboard View -->
+                <div class="community-view" id="leaderboard-view" style="display: none;">
+                    <div class="leaderboard-header">
+                        <h2>Top Researchers</h2>
+                        <div class="leaderboard-metric-buttons">
+                            <button class="leaderboard-metric-btn active" data-metric="reputation" onclick="switchLeaderboardMetric('reputation')">Reputation</button>
+                            <button class="leaderboard-metric-btn" data-metric="stars" onclick="switchLeaderboardMetric('stars')">Stars</button>
+                            <button class="leaderboard-metric-btn" data-metric="forks" onclick="switchLeaderboardMetric('forks')">Forks</button>
+                            <button class="leaderboard-metric-btn" data-metric="downloads" onclick="switchLeaderboardMetric('downloads')">Downloads</button>
+                        </div>
+                    </div>
+                    <div class="leaderboard-list" id="leaderboard-list">
+                        <!-- Leaderboard entries loaded dynamically -->
+                    </div>
+                    <div class="load-more" id="load-more-leaderboard">
+                        <button class="btn btn-outline" onclick="loadMoreLeaderboard()">Load More</button>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -607,5 +679,7 @@
     <script src="/js/community.js"></script>
     <script src="/js/social.js"></script>
     <script src="/js/profile.js"></script>
+    <script src="/js/discovery.js"></script>
+    <script src="/js/notifications.js"></script>
 </body>
 </html>

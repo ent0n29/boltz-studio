@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..services.design_store import DesignStore, get_design_store
 from ..services.follow_store import FollowStore, get_follow_store
+from ..services.notification_store import NotificationStore, get_notification_store
 from ..services.user_store import UserStore, get_user_store
 
 logger = get_logger("routes.community")
@@ -365,6 +366,7 @@ async def follow_user(
     user: RequiredUser,
     user_store: UserStore = Depends(get_user_store),
     follow_store: FollowStore = Depends(get_follow_store),
+    notification_store: NotificationStore = Depends(get_notification_store),
 ) -> dict:
     """Follow a user.
 
@@ -373,6 +375,7 @@ async def follow_user(
         user: Authenticated user
         user_store: User store dependency
         follow_store: Follow store dependency
+        notification_store: Notification store dependency
 
     Returns:
         Success message
@@ -390,6 +393,16 @@ async def follow_user(
 
     if not follow_store.follow(user.id, user_id):
         raise HTTPException(status_code=400, detail="Already following this user")
+
+    # Notify the followed user
+    notification_store.create(
+        user_id=user_id,
+        notification_type="follow",
+        message=f"{user.display_name} started following you",
+        actor_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
 
     return {"message": "Successfully followed user"}
 

@@ -19,6 +19,9 @@ from .routes import (
     auth_router,
     community_router,
     design_router,
+    discovery_router,
+    notification_router,
+    organization_router,
     pdb_router,
     prediction_router,
     social_router,
@@ -26,6 +29,7 @@ from .routes import (
 )
 from .services import start_cleanup_task
 from .services.database import init_db
+from .services.discovery_store import get_discovery_store
 from .services.session_store import get_session_store
 
 # Static files directory
@@ -59,15 +63,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     session_cleanup_task = asyncio.create_task(session_cleanup_loop())
 
+    # Start discovery stats update task
+    async def discovery_stats_loop() -> None:
+        """Periodically update trending scores and user stats."""
+        discovery_store = get_discovery_store()
+        # Initial computation
+        discovery_store.compute_trending_scores()
+        discovery_store.compute_user_stats()
+        while True:
+            await asyncio.sleep(1800)  # Every 30 minutes
+            discovery_store.compute_trending_scores()
+            discovery_store.compute_user_stats()
+
+    discovery_stats_task = asyncio.create_task(discovery_stats_loop())
+
     yield
 
     # Cleanup on shutdown
     logger.info("Shutting down Boltz Studio...")
     cleanup_task.cancel()
     session_cleanup_task.cancel()
+    discovery_stats_task.cancel()
     try:
         await cleanup_task
         await session_cleanup_task
+        await discovery_stats_task
     except asyncio.CancelledError:
         pass
 
@@ -96,6 +116,9 @@ def create_app() -> FastAPI:
     app.include_router(alignment_router)
     app.include_router(auth_router)
     app.include_router(community_router)
+    app.include_router(discovery_router)
+    app.include_router(notification_router)
+    app.include_router(organization_router)
     app.include_router(social_router)
     app.include_router(prediction_router)
     app.include_router(design_router)

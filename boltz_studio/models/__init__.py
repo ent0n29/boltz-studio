@@ -43,6 +43,32 @@ from .social import (
     ForkRequest,
     StarInfo,
 )
+from .discovery import (
+    DesignStats,
+    Leaderboard,
+    LeaderboardEntry,
+    SimilarDesign,
+    TrendingDesign,
+    TrendingList,
+    UserStats,
+)
+from .notification import (
+    NotificationList,
+    NotificationPreferences,
+    NotificationPreferencesUpdate,
+    NotificationPublic,
+    UnreadCount,
+)
+from .organization import (
+    OrganizationCreate,
+    OrganizationPublic,
+    OrganizationSummary,
+    OrganizationUpdate,
+    OrgInvite,
+    OrgMember,
+    OrgMemberList,
+    OrgRoleUpdate,
+)
 
 __all__ = [
     # Prediction models
@@ -84,4 +110,19 @@ __all__ = [
     "ForkInfo",
     "ForkRequest",
     "StarInfo",
+    # Notification models
+    "NotificationList",
+    "NotificationPreferences",
+    "NotificationPreferencesUpdate",
+    "NotificationPublic",
+    "UnreadCount",
+    # Organization models
+    "OrganizationCreate",
+    "OrganizationPublic",
+    "OrganizationSummary",
+    "OrganizationUpdate",
+    "OrgInvite",
+    "OrgMember",
+    "OrgMemberList",
+    "OrgRoleUpdate",
 ]
