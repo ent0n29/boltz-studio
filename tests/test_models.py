@@ -50,14 +50,44 @@ class TestSequenceInput:
 
     def test_molecule_types(self):
         """Test different molecule types."""
-        for mol_type in ["protein", "dna", "rna", "ligand"]:
+        # Protein/DNA/RNA use sequence field
+        for mol_type in ["protein", "dna", "rna"]:
             seq = SequenceInput(sequence="MKLAVLK", type=mol_type)
             assert seq.type == mol_type
+
+        # Ligand uses smiles field
+        ligand = SequenceInput(smiles="CC(=O)O", type="ligand")
+        assert ligand.type == "ligand"
+        assert ligand.smiles == "CC(=O)O"
 
     def test_invalid_molecule_type(self):
         """Test rejection of invalid molecule type."""
         with pytest.raises(ValidationError):
             SequenceInput(sequence="MKLAVLK", type="invalid")
+
+    def test_ligand_requires_smiles(self):
+        """Test that ligand type requires smiles field."""
+        with pytest.raises(ValidationError) as exc_info:
+            SequenceInput(sequence="MKLAVLK", type="ligand")
+
+        errors = exc_info.value.errors()
+        assert "smiles" in str(errors[0]["msg"]).lower()
+
+    def test_protein_requires_sequence(self):
+        """Test that protein type requires sequence field."""
+        with pytest.raises(ValidationError) as exc_info:
+            SequenceInput(smiles="CC(=O)O", type="protein")
+
+        errors = exc_info.value.errors()
+        assert "sequence" in str(errors[0]["msg"]).lower()
+
+    def test_valid_ligand_smiles(self):
+        """Test valid ligand with SMILES."""
+        # Aspirin
+        ligand = SequenceInput(id="L", smiles="CC(=O)Oc1ccccc1C(=O)O", type="ligand")
+        assert ligand.id == "L"
+        assert ligand.smiles == "CC(=O)Oc1ccccc1C(=O)O"
+        assert ligand.type == "ligand"
 
 
 class TestPredictionRequest:
@@ -169,3 +199,17 @@ class TestPredictionRequest:
                 sequences=[SequenceInput(sequence="MKLAVLK")],
                 sampling_steps=501,
             )
+
+    def test_protein_ligand_complex(self):
+        """Test request with protein and ligand."""
+        request = PredictionRequest(
+            sequences=[
+                SequenceInput(id="A", sequence="MKLAVLK"),
+                SequenceInput(id="L", smiles="CC(=O)Oc1ccccc1C(=O)O", type="ligand"),
+            ],
+            name="docking_test",
+        )
+        assert len(request.sequences) == 2
+        assert request.sequences[0].type == "protein"
+        assert request.sequences[1].type == "ligand"
+        assert request.sequences[1].smiles == "CC(=O)Oc1ccccc1C(=O)O"

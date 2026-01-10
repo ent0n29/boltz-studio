@@ -1,19 +1,35 @@
 """FastAPI application factory."""
 
 import asyncio
+import secrets
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
-from .config import PACKAGE_ROOT
+from .config import PACKAGE_ROOT, settings
 from .logger import logger
-from .routes import design_router, prediction_router, websocket_router
+
+from .routes import (
+    alignment_router,
+    auth_router,
+    community_router,
+    design_router,
+    pdb_router,
+    prediction_router,
+    social_router,
+    websocket_router,
+)
 from .services import start_cleanup_task
 from .services.database import init_db
+from .services.session_store import get_session_store
+
+# Static files directory
+STATIC_DIR = PACKAGE_ROOT / "static"
 
 
 @asynccontextmanager
@@ -33,13 +49,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start background cleanup task
     cleanup_task = asyncio.create_task(start_cleanup_task())
 
+    # Start session cleanup task
+    async def session_cleanup_loop() -> None:
+        """Periodically clean up expired sessions."""
+        while True:
+            await asyncio.sleep(3600)  # Every hour
+            session_store = get_session_store()
+            session_store.cleanup_expired()
+
+    session_cleanup_task = asyncio.create_task(session_cleanup_loop())
+
     yield
 
     # Cleanup on shutdown
     logger.info("Shutting down Boltz Studio...")
     cleanup_task.cancel()
+    session_cleanup_task.cancel()
     try:
         await cleanup_task
+        await session_cleanup_task
     except asyncio.CancelledError:
         pass
 
@@ -60,20 +88,36 @@ def create_app() -> FastAPI:
     # Middleware
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+    # Session middleware for OAuth state
+    session_secret = settings.session_secret or secrets.token_urlsafe(32)
+    app.add_middleware(SessionMiddleware, secret_key=session_secret)
+
     # Include routers
+    app.include_router(alignment_router)
+    app.include_router(auth_router)
+    app.include_router(community_router)
+    app.include_router(social_router)
     app.include_router(prediction_router)
     app.include_router(design_router)
     app.include_router(websocket_router)
+    app.include_router(pdb_router)
 
-    # Mount static files
-    static_dir = PACKAGE_ROOT / "static"
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    # Mount static files (CSS, JS)
+    app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
+    app.mount("/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
 
-    # Serve index.html at root
     @app.get("/", include_in_schema=False)
     async def root() -> FileResponse:
         """Serve the main application page."""
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def catch_all(request: Request, path: str) -> FileResponse:
+        """Serve static files or index.html for SPA routing."""
+        file_path = STATIC_DIR / path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(STATIC_DIR / "index.html")
 
     logger.info("Application configured successfully")
     return app

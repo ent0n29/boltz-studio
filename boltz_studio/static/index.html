@@ -6,106 +6,606 @@
     <title>Boltz Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/css/style.css">
     <script src="https://3dmol.org/build/3Dmol-min.js"></script>
 </head>
 <body>
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
     <header>
-        <div class="logo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                <path d="M2 17l10 5 10-5"/>
-                <path d="M2 12l10 5 10-5"/>
-            </svg>
-            boltz studio
-        </div>
-        <nav>
-            <a href="https://github.com/jwohlwend/boltz" target="_blank">GitHub</a>
-            <a href="https://github.com/jwohlwend/boltz#readme" target="_blank">Docs</a>
-        </nav>
-    </header>
-
-    <main>
-        <aside class="sidebar">
-            <div class="section-label">Structure Prediction</div>
-            <h1>Predict Protein Structure</h1>
-            <p class="subtitle">
-                Enter a protein sequence to predict its 3D structure using Boltz-2, an open-source diffusion model for biomolecular structure prediction.
-            </p>
-
-            <div class="input-group">
-                <label class="input-label">Amino Acid Sequence</label>
-                <textarea
-                    id="sequence"
-                    class="sequence-input"
-                    placeholder="MKLAVLKAGI..."
-                    spellcheck="false"
-                >MKLAVLKAGIAQGEVLVN</textarea>
-                <div class="input-meta">
-                    <span><span id="seq-length">18</span> residues</span>
-                    <span id="avg-plddt-display" style="display:none;">avg pLDDT: <span id="avg-plddt">-</span></span>
-                </div>
-            </div>
-
-            <div class="actions">
-                <button class="btn btn-primary" id="predict-btn" onclick="predict()">
-                    Predict Structure ->
-                </button>
-                <button class="btn btn-outline" onclick="randomMutate()">
-                    Random Mutation
-                </button>
-            </div>
-
-            <div class="progress-container" id="progress-container">
-                <div class="progress-bar-bg">
-                    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
-                </div>
-                <div class="progress-text" id="progress-text">Initializing...</div>
-            </div>
-
-            <div class="error" id="error"></div>
-
-            <div class="metrics-grid" id="metrics">
-                <div class="metric-card">
-                    <div class="metric-value" id="metric-confidence">-</div>
-                    <div class="metric-label">Confidence</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="metric-plddt">-</div>
-                    <div class="metric-label">pLDDT</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="metric-ptm">-</div>
-                    <div class="metric-label">pTM</div>
-                </div>
-            </div>
-        </aside>
-
-        <div class="viewer-area">
-            <div id="viewer"></div>
-
-            <div class="placeholder" id="placeholder">
-                <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <div class="header-left">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                     <path d="M2 17l10 5 10-5"/>
                     <path d="M2 12l10 5 10-5"/>
                 </svg>
-                <p class="placeholder-text">No structure yet</p>
-                <p class="placeholder-hint">Enter a sequence and click predict</p>
+                boltz studio
             </div>
-
-            <div class="legend" id="legend">
-                <div class="legend-title">Confidence (pLDDT)</div>
-                <div class="legend-item"><span class="legend-dot" style="background:#0053D6"></span> Very high (>90)</div>
-                <div class="legend-item"><span class="legend-dot" style="background:#65CBF3"></span> High (70-90)</div>
-                <div class="legend-item"><span class="legend-dot" style="background:#FFDB13"></span> Medium (50-70)</div>
-                <div class="legend-item"><span class="legend-dot" style="background:#FF7D45"></span> Low (<50)</div>
+        </div>
+        <nav class="header-right">
+            <nav class="tabs">
+                <button class="tab active" data-tab="predict">Predict</button>
+                <button class="tab" data-tab="community">Community</button>
+            </nav>
+            <div class="header-divider"></div>
+            <a href="https://github.com/jwohlwend/boltz" target="_blank">GitHub</a>
+            <a href="https://github.com/jwohlwend/boltz#readme" target="_blank">Docs</a>
+            <div id="auth-container">
+                <button class="btn btn-outline" id="login-btn" onclick="showLoginModal()">Sign In</button>
             </div>
+        </nav>
+    </header>
 
-            <div class="controls-hint" id="controls-hint">drag to rotate · scroll to zoom</div>
+    <!-- Login Modal -->
+    <div class="modal" id="login-modal">
+        <div class="modal-backdrop" onclick="hideLoginModal()"></div>
+        <div class="modal-content login-modal">
+            <h2>Sign in to Boltz Studio</h2>
+            <p class="modal-subtitle">Save and share your protein designs</p>
+            <div class="login-buttons">
+                <a href="/auth/login/github" class="btn btn-github">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    Continue with GitHub
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Local Modal (for localStorage) -->
+    <div class="modal" id="save-local-modal">
+        <div class="modal-backdrop" onclick="hideSaveLocalModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Save Design</h2>
+                <button class="modal-close" onclick="hideSaveLocalModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="save-local-name" placeholder="My protein design">
+            </div>
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <textarea id="save-local-notes" placeholder="Add notes about this design..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Tags</label>
+                <input type="text" id="save-local-tags" placeholder="insulin, mutation, binding">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="hideSaveLocalModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveDesignLocally()">Save Design</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Publish Modal (for community) -->
+    <div class="modal" id="publish-modal">
+        <div class="modal-backdrop" onclick="hidePublishModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Publish to Community</h2>
+                <button class="modal-close" onclick="hidePublishModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="publish-name" placeholder="My protein design">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="publish-description" placeholder="Describe your design..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Tags (comma separated)</label>
+                <input type="text" id="publish-tags" placeholder="enzyme, binding, therapeutic">
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="publish-public" checked>
+                    Make public (share with community)
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="hidePublishModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="publishDesign()">Publish</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal" id="confirm-modal">
+        <div class="modal-backdrop" onclick="hideConfirmModal()"></div>
+        <div class="modal-content confirm-modal">
+            <div class="confirm-icon" id="confirm-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <h3 id="confirm-title">Are you sure?</h3>
+            <p id="confirm-message">This action cannot be undone.</p>
+            <div class="confirm-actions">
+                <button class="btn btn-outline" onclick="hideConfirmModal()">Cancel</button>
+                <button class="btn btn-danger" id="confirm-btn" onclick="confirmAction()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal" id="profile-modal">
+        <div class="modal-backdrop" onclick="hideProfileModal()"></div>
+        <div class="modal-content profile-modal">
+            <button class="modal-close" onclick="hideProfileModal()">&times;</button>
+            <div id="profile-content">
+                <!-- Profile content populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Library Modal -->
+    <div class="modal" id="library-modal">
+        <div class="modal-backdrop" onclick="hideLibraryModal()"></div>
+        <div class="modal-content library-modal">
+            <div class="modal-header">
+                <h2>Design Library</h2>
+                <button class="modal-close" onclick="hideLibraryModal()">&times;</button>
+            </div>
+            <div class="library-toolbar">
+                <div class="search-box">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input type="text" id="library-search" placeholder="Search designs...">
+                </div>
+                <select id="library-sort">
+                    <option value="recent">Most Recent</option>
+                    <option value="name">Name</option>
+                    <option value="plddt">Best pLDDT</option>
+                </select>
+            </div>
+            <div class="library-grid" id="library-grid">
+                <!-- Designs loaded dynamically -->
+            </div>
+            <div class="library-empty" id="library-empty">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                <p>No saved designs yet</p>
+                <p class="hint">Run a prediction and save it to build your library</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load PDB Modal -->
+    <div class="modal" id="pdb-modal">
+        <div class="modal-backdrop" onclick="hidePdbModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Load from PDB</h2>
+                <button class="modal-close" onclick="hidePdbModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>PDB ID</label>
+                <input type="text" id="pdb-id-input" placeholder="e.g., 1ABC" maxlength="4">
+            </div>
+            <div class="form-group">
+                <label>Or search by name</label>
+                <input type="text" id="pdb-search-input" placeholder="e.g., insulin receptor">
+            </div>
+            <div class="pdb-results" id="pdb-results">
+                <!-- Search results loaded dynamically -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="hidePdbModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="loadPdbById()">Load Structure</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Design Detail Modal -->
+    <div class="modal" id="design-modal">
+        <div class="modal-backdrop" onclick="hideDesignModal()"></div>
+        <div class="modal-content design-modal">
+            <div class="design-modal-header">
+                <div>
+                    <h2 id="design-modal-title">Design Name</h2>
+                    <div class="design-modal-meta">
+                        <span id="design-modal-author">by username</span>
+                        <span id="design-modal-date">Jan 1, 2025</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="hideDesignModal()">&times;</button>
+            </div>
+            <div class="design-modal-body">
+                <div class="design-modal-viewer">
+                    <div id="design-viewer"></div>
+                </div>
+                <div class="design-modal-info">
+                    <p id="design-modal-description">Description goes here</p>
+                    <div class="design-modal-tags" id="design-modal-tags"></div>
+                    <div class="design-modal-metrics">
+                        <div class="metric-card">
+                            <div class="metric-value" id="design-modal-plddt">-</div>
+                            <div class="metric-label">pLDDT</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="design-modal-ptm">-</div>
+                            <div class="metric-label">pTM</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-value" id="design-modal-residues">-</div>
+                            <div class="metric-label">Residues</div>
+                        </div>
+                    </div>
+                    <div class="design-modal-social">
+                        <button class="btn btn-outline social-btn" id="design-star-btn" onclick="toggleStar()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                            </svg>
+                            <span id="design-star-count">0</span>
+                        </button>
+                        <button class="btn btn-outline social-btn" onclick="forkDesign()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="18" r="3"/>
+                                <circle cx="6" cy="6" r="3"/>
+                                <circle cx="18" cy="6" r="3"/>
+                                <path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/>
+                                <path d="M12 12v3"/>
+                            </svg>
+                            Fork
+                        </button>
+                        <button class="btn btn-outline social-btn" onclick="addToCollection()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Save
+                        </button>
+                        <button class="btn btn-danger social-btn" id="design-delete-btn" onclick="deleteDesign()" style="display:none;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Delete
+                        </button>
+                    </div>
+                    <div class="design-modal-sequence">
+                        <label>Sequence</label>
+                        <div class="sequence-display" id="design-modal-sequence">MKLAVLKAGI...</div>
+                        <button class="btn btn-outline" onclick="copySequence()">Copy Sequence</button>
+                    </div>
+                </div>
+            </div>
+            <div class="design-modal-comments">
+                <h3>Comments</h3>
+                <div id="comments-list"></div>
+                <div class="comment-form" id="comment-form">
+                    <textarea id="comment-input" placeholder="Add a comment..."></textarea>
+                    <button class="btn btn-primary" onclick="submitComment()">Post Comment</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mutation Picker Popup -->
+    <div class="mutation-picker" id="mutation-picker">
+        <div class="picker-header">
+            <span id="picker-position">Position 1</span>
+            <span id="picker-current">M</span>
+            <span class="picker-arrow">-></span>
+            <span id="picker-new">?</span>
+        </div>
+        <div class="aa-grid" id="aa-grid">
+            <!-- Amino acids populated by JS -->
+        </div>
+        <button class="picker-reset" id="picker-reset" onclick="resetMutation()">Reset to original</button>
+    </div>
+
+    <main>
+        <!-- Predict Tab -->
+        <div class="tab-content active" id="predict-tab">
+            <aside class="sidebar">
+                <div class="section-label">Structure Prediction</div>
+                <h1>Predict Protein Structure</h1>
+                <p class="subtitle">
+                    Enter a protein sequence to predict its 3D structure using Boltz-2.
+                </p>
+
+                <!-- Sequence Input with Interactive Editor -->
+                <div class="input-group">
+                    <label class="input-label">Amino Acid Sequence</label>
+                    <div class="sequence-editor-wrapper">
+                        <textarea
+                            id="sequence"
+                            class="sequence-input"
+                            placeholder="MKLAVLKAGI..."
+                            spellcheck="false"
+                        >MKLAVLKAGIAQGEVLVN</textarea>
+                        <div class="sequence-editor" id="sequence-editor">
+                            <!-- Residues populated by JS -->
+                        </div>
+                        <div class="editor-hint">Click a residue above to create a mutation</div>
+                    </div>
+                    <div class="input-meta">
+                        <span><span id="seq-length">18</span> residues</span>
+                        <span id="mutation-count" class="mutation-badge" style="display:none;">0 mutations</span>
+                    </div>
+                    <div class="mutations-list" id="mutations-list" style="display:none;">
+                        <!-- Active mutations shown here -->
+                    </div>
+                </div>
+
+                <!-- Ligand Section (Expandable) -->
+                <div class="expandable-section" id="ligand-section">
+                    <button class="section-toggle" onclick="toggleLigandSection()">
+                        <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                        Add Ligand (SMILES)
+                    </button>
+                    <div class="section-content" id="ligand-content">
+                        <div class="form-group">
+                            <label>SMILES String</label>
+                            <textarea id="smiles-input" class="smiles-input" placeholder="e.g., CC(=O)Oc1ccccc1C(=O)O"></textarea>
+                        </div>
+                        <div class="common-ligands">
+                            <span class="common-label">Common:</span>
+                            <button class="ligand-chip" onclick="setLigand('ATP', 'C1=NC2=C(C(=N1)N)N=CN2C3C(C(C(O3)COP(=O)(O)OP(=O)(O)OP(=O)(O)O)O)O')">ATP</button>
+                            <button class="ligand-chip" onclick="setLigand('NAD', 'NC(=O)c1ccc[n+](C2OC(COP(=O)([O-])OP(=O)(O)OCC3OC(n4cnc5c(N)ncnc54)C(O)C3O)C(O)C2O)c1')">NAD</button>
+                            <button class="ligand-chip" onclick="setLigand('Glucose', 'OCC1OC(O)C(O)C(O)C1O')">Glucose</button>
+                            <button class="ligand-chip" onclick="setLigand('Aspirin', 'CC(=O)Oc1ccccc1C(=O)O')">Aspirin</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Predict Button -->
+                <div class="actions">
+                    <button class="btn btn-primary btn-large" id="predict-btn" onclick="predict()">
+                        Predict Structure
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Secondary Actions -->
+                <div class="secondary-actions">
+                    <button class="btn btn-outline btn-icon" onclick="showLibraryModal()" title="Design Library">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                        Library
+                    </button>
+                    <button class="btn btn-outline btn-icon" onclick="showPdbModal()" title="Load from PDB">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                        Load PDB
+                    </button>
+                </div>
+
+                <!-- Progress -->
+                <div class="progress-container" id="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Initializing...</div>
+                </div>
+
+                <div class="error" id="error"></div>
+
+                <!-- Metrics -->
+                <div class="metrics-grid" id="metrics">
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-confidence">-</div>
+                        <div class="metric-label">Confidence</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-plddt">-</div>
+                        <div class="metric-label">pLDDT</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value" id="metric-ptm">-</div>
+                        <div class="metric-label">pTM</div>
+                    </div>
+                    <div class="metric-card" id="metric-affinity-card" style="display:none;">
+                        <div class="metric-value" id="metric-affinity">-</div>
+                        <div class="metric-label">Affinity</div>
+                    </div>
+                </div>
+            </aside>
+
+            <div class="viewer-area">
+                <!-- Single Viewer Mode -->
+                <div id="single-viewer-mode">
+                    <div id="viewer"></div>
+
+                    <div class="placeholder" id="placeholder">
+                        <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        <p class="placeholder-text">No structure yet</p>
+                        <p class="placeholder-hint">Enter a sequence and click predict</p>
+                    </div>
+
+                    <!-- Viewer Action Bar -->
+                    <div class="viewer-actions" id="viewer-actions">
+                        <button class="action-btn" onclick="downloadPdb()" title="Download PDB file (Ctrl+D)">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            PDB
+                        </button>
+                        <button class="action-btn" onclick="downloadFasta()" title="Download FASTA file">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                            FASTA
+                        </button>
+                        <div class="action-divider"></div>
+                        <button class="action-btn" onclick="showSaveLocalModal()" title="Save to library (Ctrl+S)">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                <polyline points="17 21 17 13 7 13 7 21"/>
+                                <polyline points="7 3 7 8 15 8"/>
+                            </svg>
+                            Save
+                        </button>
+                        <button class="action-btn" onclick="enterCompareMode()" title="Compare structures">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="9"/>
+                                <rect x="14" y="3" width="7" height="9"/>
+                                <path d="M10 7h4"/>
+                                <path d="M12 5v4"/>
+                            </svg>
+                            Compare
+                        </button>
+                        <button class="action-btn primary" onclick="showPublishModal()" title="Publish to community">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                                <polyline points="16 6 12 2 8 6"/>
+                                <line x1="12" y1="2" x2="12" y2="15"/>
+                            </svg>
+                            Publish
+                        </button>
+                    </div>
+
+                    <div class="legend" id="legend">
+                        <div class="legend-title">Confidence (pLDDT)</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#0053D6"></span> Very high (>90)</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#65CBF3"></span> High (70-90)</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#FFDB13"></span> Medium (50-70)</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#FF7D45"></span> Low (<50)</div>
+                    </div>
+
+                    <div class="controls-hint" id="controls-hint">drag to rotate | scroll to zoom</div>
+                </div>
+
+                <!-- Comparison Mode -->
+                <div id="compare-mode" class="compare-mode">
+                    <!-- Header with dropdowns -->
+                    <div class="compare-header">
+                        <button class="compare-back-btn" onclick="exitCompareMode()">← Back</button>
+                        <div class="compare-selectors">
+                            <select id="compare-select-1" onchange="onCompareSelectChange()">
+                                <option value="">Select design...</option>
+                            </select>
+                            <span class="compare-vs">vs</span>
+                            <select id="compare-select-2" onchange="onCompareSelectChange()">
+                                <option value="">Select design...</option>
+                            </select>
+                        </div>
+                        <div class="compare-delta" id="compare-delta"></div>
+                    </div>
+                    <!-- Two viewers side by side -->
+                    <div class="compare-viewers">
+                        <div class="compare-viewer" id="compare-viewer-1"></div>
+                        <div class="compare-viewer" id="compare-viewer-2"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Community Tab -->
+        <div class="tab-content" id="community-tab">
+            <div class="community-container">
+                <div class="community-header">
+                    <h1>Community Designs</h1>
+                    <p>Explore protein structures shared by the community</p>
+                </div>
+
+                <!-- Filter Chips -->
+                <div class="community-view-tabs">
+                    <button class="view-tab active" data-view="all" onclick="switchCommunityView('all')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                        </svg>
+                        All Designs
+                    </button>
+                    <button class="view-tab" data-view="starred" onclick="switchCommunityView('starred')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                        Starred
+                    </button>
+                    <button class="view-tab" data-view="mine" onclick="switchCommunityView('mine')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        My Designs
+                    </button>
+                    <button class="view-tab" data-view="collections" onclick="switchCommunityView('collections')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        Collections
+                    </button>
+                </div>
+
+                <!-- Search and Sort -->
+                <div class="community-filters" id="community-filters">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                        <input type="text" id="search-input" placeholder="Search designs...">
+                    </div>
+                    <select id="sort-select">
+                        <option value="recent">Most Recent</option>
+                        <option value="stars">Most Stars</option>
+                        <option value="forks">Most Forks</option>
+                        <option value="confidence">Best Confidence</option>
+                    </select>
+                </div>
+
+                <!-- Designs Grid View -->
+                <div class="community-view" id="designs-view">
+                    <div class="designs-grid" id="designs-grid">
+                        <!-- Designs loaded dynamically -->
+                    </div>
+                    <div class="load-more" id="load-more">
+                        <button class="btn btn-outline" onclick="loadMoreDesigns()">Load More</button>
+                    </div>
+                </div>
+
+                <!-- Collections View -->
+                <div class="community-view" id="collections-view" style="display: none;">
+                    <div class="collections-header-inline">
+                        <button class="btn btn-primary" onclick="showCreateCollectionModal()">+ New Collection</button>
+                    </div>
+                    <div class="collections-list" id="collections-list">
+                        <!-- Collections loaded dynamically -->
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/js/app.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/community.js"></script>
+    <script src="/js/social.js"></script>
+    <script src="/js/profile.js"></script>
 </body>
 </html>

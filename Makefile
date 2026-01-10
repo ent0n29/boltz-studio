@@ -1,4 +1,4 @@
-.PHONY: install dev run test lint clean
+.PHONY: install dev run test lint clean build
 
 # Install in production mode
 install:
@@ -9,6 +9,10 @@ install:
 dev:
 	uv venv
 	. .venv/bin/activate && uv pip install -e ".[dev]"
+
+# Verify backend imports
+build:
+	. .venv/bin/activate && python -c "import boltz_studio"
 
 # Run the application
 run:
@@ -39,9 +43,10 @@ reset: clean dev
 help:
 	@echo "Boltz Studio - Development Commands"
 	@echo ""
-	@echo "  make dev      - Set up development environment"
-	@echo "  make run      - Run the application"
-	@echo "  make test     - Run tests"
-	@echo "  make lint     - Check code style"
-	@echo "  make clean    - Remove build artifacts"
-	@echo "  make reset    - Clean and reinstall"
+	@echo "  make dev   - Set up development environment"
+	@echo "  make run   - Run the application"
+	@echo "  make build - Verify backend imports"
+	@echo "  make test  - Run tests"
+	@echo "  make lint  - Check code style"
+	@echo "  make clean - Remove build artifacts"
+	@echo "  make reset - Clean and reinstall"

@@ -12,11 +12,15 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BOLTZ_STUDIO_",
         case_sensitive=False,
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+    debug: bool = False  # Enable dev features like dev login (set True for local dev)
 
     # Paths
     db_path: str = "boltz_studio.db"
@@ -34,6 +38,21 @@ class Settings(BaseSettings):
 
     # Rate limiting
     requests_per_minute: int = 10
+
+    # OAuth - Google
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # OAuth - GitHub
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
+    # Session settings
+    session_secret: str = ""  # Required for cookie signing
+    session_duration_hours: int = 168  # 1 week default
+
+    # App URL (for OAuth callbacks)
+    app_url: str = "http://localhost:8000"
 
 
 @lru_cache

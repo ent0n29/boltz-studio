@@ -2,8 +2,6 @@
 
 import os
 import tempfile
-from pathlib import Path
-from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient

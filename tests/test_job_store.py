@@ -2,7 +2,6 @@
 
 import uuid
 
-import pytest
 
 
 def unique_id(prefix: str = "test") -> str:

@@ -7,7 +7,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -95,9 +95,16 @@ class BoltzRunner:
         """
         yaml_content: dict[str, Any] = {"version": 1, "sequences": []}
         for seq in request.sequences:
-            yaml_content["sequences"].append({
-                seq.type: {"id": seq.id, "sequence": seq.sequence}
-            })
+            if seq.type == "ligand":
+                # Ligands use SMILES string
+                yaml_content["sequences"].append({
+                    seq.type: {"id": seq.id, "smiles": seq.smiles}
+                })
+            else:
+                # Proteins, DNA, RNA use sequence
+                yaml_content["sequences"].append({
+                    seq.type: {"id": seq.id, "sequence": seq.sequence}
+                })
 
         yaml_file = work_dir / f"{request.name}.yaml"
         with open(yaml_file, "w") as f:
@@ -166,7 +173,7 @@ class BoltzRunner:
         self,
         request: PredictionRequest,
         job_id: str,
-        update_progress: callable,
+        update_progress: Callable[[float], None],
     ) -> dict[str, Any]:
         """Synchronous prediction using Boltz's internal API.
 
@@ -362,11 +369,18 @@ class BoltzRunner:
 
         # Parse outputs
         output_dir = predictions_dir / request.name
-        return {
+        result = {
             "structure_pdb": self.parser.parse_pdb(output_dir),
             "confidence": self.parser.parse_confidence(output_dir),
             "plddt_per_residue": self.parser.parse_plddt(output_dir),
         }
+
+        # Check for affinity predictions (protein-ligand complexes)
+        affinity_data = self.parser.parse_affinity(output_dir)
+        if affinity_data:
+            result["affinity"] = affinity_data
+
+        return result
 
     def _compute_msa(
         self,

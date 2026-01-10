@@ -17,20 +17,25 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "numpy>=1.24",
+    "httpx>=0.24.0",
+    "authlib>=1.3",
+    "itsdangerous>=2.1",
+    "email-validator>=2.0",
+    "biopython>=1.80",
 ]
 
 [project.scripts]
 boltz-studio = "boltz_studio.main:main"
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "pytest-asyncio", "httpx"]
+dev = ["ruff", "pytest", "pytest-asyncio", "pytest-mock", "httpx"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["boltz_studio*"]
 
 [tool.setuptools.package-data]
-boltz_studio = ["static/**/*"]
+boltz_studio = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

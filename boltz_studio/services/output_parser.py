@@ -66,3 +66,22 @@ class OutputParser:
                 return data["plddt"].tolist()
         logger.warning(f"No pLDDT file found in {output_dir}")
         return []
+
+    @staticmethod
+    def parse_affinity(output_dir: Path) -> dict[str, Any]:
+        """Read binding affinity JSON file.
+
+        Args:
+            output_dir: Directory containing output files
+
+        Returns:
+            Affinity metrics dictionary with keys:
+            - affinity_pred_value: Raw affinity prediction
+            - affinity_probability_binary: Binding probability (0-1)
+        """
+        affinity_files = list(output_dir.glob("affinity_*.json"))
+        if affinity_files:
+            logger.debug(f"Found affinity file: {affinity_files[0].name}")
+            return json.loads(affinity_files[0].read_text())
+        logger.debug(f"No affinity file found in {output_dir}")
+        return {}
