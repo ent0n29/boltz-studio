@@ -265,6 +265,47 @@ async def get_design_preview(
     return {"pdb_data": design.structure_pdb}
 
 
+@router.get("/designs/{design_id}/citation")
+async def get_design_citation(
+    design_id: str,
+    format: str = Query("bibtex", pattern="^(bibtex|apa|mla|chicago|ris)$"),
+    store: DesignStore = Depends(get_design_store),
+) -> dict:
+    """Get citation for a design.
+
+    Args:
+        design_id: Design identifier
+        format: Citation format (bibtex, apa, mla, chicago, ris)
+        store: Design store dependency
+
+    Returns:
+        Citation text and DOI-style identifier
+    """
+    from ..services.citation import generate_citation, generate_doi_placeholder
+
+    design = store.get_public(design_id)
+    if not design:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    citation = generate_citation(
+        design_id=design_id,
+        design_name=design.name,
+        author_name=design.author.display_name,
+        created_at=design.created_at,
+        description=design.description,
+        format=format,
+    )
+
+    doi = generate_doi_placeholder(design_id)
+
+    return {
+        "citation": citation,
+        "doi": doi,
+        "format": format,
+        "design_id": design_id,
+    }
+
+
 # ============================================================================
 # User Profiles (Public)
 # ============================================================================

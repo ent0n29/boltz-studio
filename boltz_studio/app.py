@@ -15,16 +15,21 @@ from .config import PACKAGE_ROOT, settings
 from .logger import logger
 
 from .routes import (
+    activity_router,
     alignment_router,
+    api_keys_router,
     auth_router,
     community_router,
     design_router,
     discovery_router,
+    export_router,
     notification_router,
     organization_router,
     pdb_router,
     prediction_router,
+    reputation_router,
     social_router,
+    validation_router,
     websocket_router,
 )
 from .services import start_cleanup_task
@@ -113,13 +118,18 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
     # Include routers
+    app.include_router(activity_router)
     app.include_router(alignment_router)
+    app.include_router(api_keys_router)
     app.include_router(auth_router)
     app.include_router(community_router)
     app.include_router(discovery_router)
+    app.include_router(export_router)
     app.include_router(notification_router)
     app.include_router(organization_router)
+    app.include_router(reputation_router)
     app.include_router(social_router)
+    app.include_router(validation_router)
     app.include_router(prediction_router)
     app.include_router(design_router)
     app.include_router(websocket_router)

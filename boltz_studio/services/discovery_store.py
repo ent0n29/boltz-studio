@@ -15,9 +15,10 @@ from ..models.discovery import (
     TrendingList,
     UserStats,
 )
-from ..models.design import DesignSummary
 from ..models.user import UserPublic
+from .cache import leaderboard_cache, trending_cache
 from .database import get_connection
+from .utils import build_design_summary, parse_tags_from_group_concat
 
 logger = get_logger("discovery_store")
 
@@ -189,6 +190,10 @@ class DiscoveryStore:
                 updated += 1
 
         logger.info(f"Updated trending scores for {updated} designs")
+
+        # Invalidate trending cache after recomputation
+        trending_cache.invalidate_prefix("trending:")
+
         return updated
 
     def get_trending(
@@ -207,11 +212,18 @@ class DiscoveryStore:
         Returns:
             List of trending designs
         """
+        # Use cache for first page of each time window
+        cache_key = f"trending:{time_window}:{offset}:{limit}"
+        if offset == 0 and limit == 20:
+            cached = trending_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         window_days = {"day": 1, "week": 7, "month": 30}.get(time_window, 7)
         cutoff = datetime.utcnow() - timedelta(days=window_days)
 
         with get_connection() as conn:
-            # Get designs with recent activity
+            # Get designs with recent activity and tags in a single query
             rows = conn.execute(
                 """
                 WITH recent_activity AS (
@@ -233,18 +245,24 @@ class DiscoveryStore:
                     GROUP BY parent_design_id
                 )
                 SELECT
-                    d.*,
-                    u.display_name as author_name,
-                    u.avatar_url as author_avatar,
+                    d.id, d.name, d.description, d.sequence, d.smiles,
+                    d.confidence_score, d.complex_plddt, d.affinity_probability,
+                    d.preview_image, d.parent_design_id,
+                    d.star_count, d.fork_count, d.comment_count,
+                    d.trending_score, d.created_at,
+                    u.id as user_id, u.display_name, u.avatar_url, u.created_at as user_created_at,
                     COALESCE(ra.recent_stars, 0) as recent_stars,
                     COALESCE(rd.cnt, 0) as recent_downloads,
-                    COALESCE(rf.cnt, 0) as recent_forks
+                    COALESCE(rf.cnt, 0) as recent_forks,
+                    GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                 FROM designs d
                 JOIN users u ON d.user_id = u.id
                 LEFT JOIN recent_activity ra ON d.id = ra.design_id
                 LEFT JOIN recent_downloads rd ON d.id = rd.design_id
                 LEFT JOIN recent_forks rf ON d.id = rf.design_id
+                LEFT JOIN design_tags dt ON d.id = dt.design_id
                 WHERE d.is_public = 1
+                GROUP BY d.id
                 ORDER BY d.trending_score DESC, d.star_count DESC
                 LIMIT ? OFFSET ?
                 """,
@@ -259,35 +277,10 @@ class DiscoveryStore:
                 "SELECT COUNT(*) FROM designs WHERE is_public = 1"
             ).fetchone()[0]
 
-            # Build trending list
+            # Build trending list using shared utility
             designs = []
             for i, row in enumerate(rows):
-                # Get tags
-                tags_rows = conn.execute(
-                    "SELECT tag, tag_type FROM design_tags WHERE design_id = ?",
-                    (row["id"],),
-                ).fetchall()
-
-                tags = [
-                    {"name": t["tag"], "type": t["tag_type"]} for t in tags_rows
-                ]
-
-                summary = DesignSummary(
-                    id=row["id"],
-                    name=row["name"],
-                    description=row["description"],
-                    sequence=row["sequence"][:50] + "..." if len(row["sequence"]) > 50 else row["sequence"],
-                    confidence_score=row["confidence_score"],
-                    star_count=row["star_count"] or 0,
-                    fork_count=row["fork_count"] or 0,
-                    comment_count=row["comment_count"] or 0,
-                    author_id=row["user_id"],
-                    author_name=row["author_name"],
-                    author_avatar=row["author_avatar"],
-                    preview_image=row["preview_image"],
-                    tags=tags,
-                    created_at=datetime.fromisoformat(row["created_at"].replace("Z", "")),
-                )
+                summary = build_design_summary(dict(row))
 
                 trending = TrendingDesign(
                     design=summary,
@@ -299,12 +292,18 @@ class DiscoveryStore:
                 )
                 designs.append(trending)
 
-            return TrendingList(
+            result = TrendingList(
                 designs=designs,
                 total=total,
                 has_more=has_more,
                 time_window=time_window,
             )
+
+            # Cache first page results
+            if offset == 0 and limit == 20:
+                trending_cache.set(cache_key, result)
+
+            return result
 
     def compute_user_stats(self) -> int:
         """Compute and cache user statistics for leaderboard.
@@ -377,6 +376,10 @@ class DiscoveryStore:
             )
 
         logger.info(f"Updated stats for {updated} users")
+
+        # Invalidate leaderboard cache after recomputation
+        leaderboard_cache.invalidate_prefix("leaderboard:")
+
         return updated
 
     def get_leaderboard(
@@ -395,6 +398,13 @@ class DiscoveryStore:
         Returns:
             Leaderboard with entries
         """
+        # Use cache for first page
+        cache_key = f"leaderboard:{metric}:{offset}:{limit}"
+        if offset == 0 and limit == 20:
+            cached = leaderboard_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
         order_col = {
             "reputation": "us.reputation_score",
             "stars": "us.total_stars_received",
@@ -445,12 +455,18 @@ class DiscoveryStore:
                 )
                 entries.append(entry)
 
-            return Leaderboard(
+            result = Leaderboard(
                 entries=entries,
                 total=total,
                 has_more=has_more,
                 metric=metric,
             )
+
+            # Cache first page results
+            if offset == 0 and limit == 20:
+                leaderboard_cache.set(cache_key, result)
+
+            return result
 
     def get_user_stats(self, user_id: str) -> UserStats | None:
         """Get stats for a specific user.
@@ -514,20 +530,26 @@ class DiscoveryStore:
             ).fetchall()
             source_tag_set = {t["tag"] for t in source_tags}
 
-            # Find designs with matching tags (excluding source)
+            # Find designs with matching tags (excluding source) - single query with tags
             similar = []
 
             if source_tag_set:
                 tag_matches = conn.execute(
                     """
-                    SELECT DISTINCT d.*, u.display_name as author_name,
-                           u.avatar_url as author_avatar,
-                           COUNT(dt.tag) as matching_tags
+                    SELECT
+                        d.id, d.name, d.description, d.sequence, d.smiles,
+                        d.confidence_score, d.complex_plddt, d.affinity_probability,
+                        d.preview_image, d.parent_design_id,
+                        d.star_count, d.fork_count, d.comment_count, d.created_at,
+                        u.id as user_id, u.display_name, u.avatar_url, u.created_at as user_created_at,
+                        COUNT(DISTINCT dt_match.tag) as matching_tags,
+                        GROUP_CONCAT(DISTINCT dt_all.tag || '|' || dt_all.tag_type) as tags_concat
                     FROM designs d
                     JOIN users u ON d.user_id = u.id
-                    JOIN design_tags dt ON d.id = dt.design_id
+                    JOIN design_tags dt_match ON d.id = dt_match.design_id
+                    LEFT JOIN design_tags dt_all ON d.id = dt_all.design_id
                     WHERE d.id != ? AND d.is_public = 1
-                      AND dt.tag IN ({})
+                      AND dt_match.tag IN ({})
                     GROUP BY d.id
                     ORDER BY matching_tags DESC, d.star_count DESC
                     LIMIT ?
@@ -536,28 +558,7 @@ class DiscoveryStore:
                 ).fetchall()
 
                 for row in tag_matches:
-                    tags_rows = conn.execute(
-                        "SELECT tag, tag_type FROM design_tags WHERE design_id = ?",
-                        (row["id"],),
-                    ).fetchall()
-                    tags = [{"name": t["tag"], "type": t["tag_type"]} for t in tags_rows]
-
-                    summary = DesignSummary(
-                        id=row["id"],
-                        name=row["name"],
-                        description=row["description"],
-                        sequence=row["sequence"][:50] + "..." if len(row["sequence"]) > 50 else row["sequence"],
-                        confidence_score=row["confidence_score"],
-                        star_count=row["star_count"] or 0,
-                        fork_count=row["fork_count"] or 0,
-                        comment_count=row["comment_count"] or 0,
-                        author_id=row["user_id"],
-                        author_name=row["author_name"],
-                        author_avatar=row["author_avatar"],
-                        preview_image=row["preview_image"],
-                        tags=tags,
-                        created_at=datetime.fromisoformat(row["created_at"].replace("Z", "")),
-                    )
+                    summary = build_design_summary(dict(row))
 
                     # Determine similarity reason
                     if row["user_id"] == source["user_id"]:
@@ -573,14 +574,22 @@ class DiscoveryStore:
                         similarity_reason=reason,
                     ))
 
-            # If not enough matches, add from same author
+            # If not enough matches, add from same author - single query with tags
             if len(similar) < limit:
                 same_author = conn.execute(
                     """
-                    SELECT d.*, u.display_name as author_name, u.avatar_url as author_avatar
+                    SELECT
+                        d.id, d.name, d.description, d.sequence, d.smiles,
+                        d.confidence_score, d.complex_plddt, d.affinity_probability,
+                        d.preview_image, d.parent_design_id,
+                        d.star_count, d.fork_count, d.comment_count, d.created_at,
+                        u.id as user_id, u.display_name, u.avatar_url, u.created_at as user_created_at,
+                        GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                     FROM designs d
                     JOIN users u ON d.user_id = u.id
+                    LEFT JOIN design_tags dt ON d.id = dt.design_id
                     WHERE d.user_id = ? AND d.id != ? AND d.is_public = 1
+                    GROUP BY d.id
                     ORDER BY d.star_count DESC
                     LIMIT ?
                     """,
@@ -592,28 +601,7 @@ class DiscoveryStore:
                     if row["id"] in existing_ids:
                         continue
 
-                    tags_rows = conn.execute(
-                        "SELECT tag, tag_type FROM design_tags WHERE design_id = ?",
-                        (row["id"],),
-                    ).fetchall()
-                    tags = [{"name": t["tag"], "type": t["tag_type"]} for t in tags_rows]
-
-                    summary = DesignSummary(
-                        id=row["id"],
-                        name=row["name"],
-                        description=row["description"],
-                        sequence=row["sequence"][:50] + "..." if len(row["sequence"]) > 50 else row["sequence"],
-                        confidence_score=row["confidence_score"],
-                        star_count=row["star_count"] or 0,
-                        fork_count=row["fork_count"] or 0,
-                        comment_count=row["comment_count"] or 0,
-                        author_id=row["user_id"],
-                        author_name=row["author_name"],
-                        author_avatar=row["author_avatar"],
-                        preview_image=row["preview_image"],
-                        tags=tags,
-                        created_at=datetime.fromisoformat(row["created_at"].replace("Z", "")),
-                    )
+                    summary = build_design_summary(dict(row))
 
                     similar.append(SimilarDesign(
                         design=summary,

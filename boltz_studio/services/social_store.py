@@ -20,6 +20,7 @@ from ..models import (
     UserPublic,
 )
 from .database import get_connection
+from .utils import build_design_summary
 
 logger = get_logger("social_store")
 
@@ -111,21 +112,25 @@ class SocialStore:
             rows = conn.execute(
                 """
                 SELECT d.id, d.name, d.description, d.sequence, d.smiles,
-                       d.confidence_score, d.affinity_probability,
+                       d.confidence_score, d.complex_plddt, d.affinity_probability,
+                       d.preview_image, d.parent_design_id,
                        d.star_count, d.fork_count, d.comment_count,
                        d.created_at, u.id as user_id, u.display_name, u.avatar_url,
-                       u.created_at as user_created_at
+                       u.created_at as user_created_at,
+                       GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                 FROM stars s
                 JOIN designs d ON s.design_id = d.id
                 JOIN users u ON d.user_id = u.id
+                LEFT JOIN design_tags dt ON d.id = dt.design_id
                 WHERE s.user_id = ? AND d.is_public = 1
+                GROUP BY d.id
                 ORDER BY s.created_at DESC
                 LIMIT ? OFFSET ?
                 """,
                 (user_id, limit, offset),
             ).fetchall()
 
-            return [self._row_to_design_summary(row) for row in rows]
+            return [build_design_summary(dict(row)) for row in rows]
 
     # =========================================================================
     # Forks
@@ -394,15 +399,18 @@ class SocialStore:
             user_id: Current user ID (to check access to private collections)
         """
         with get_connection() as conn:
+            # Use LEFT JOIN instead of scalar subquery for efficiency
             row = conn.execute(
                 """
                 SELECT c.id, c.name, c.description, c.is_public, c.created_at, c.updated_at,
                        u.id as user_id, u.display_name, u.avatar_url,
                        u.created_at as user_created_at,
-                       (SELECT COUNT(*) FROM collection_items WHERE collection_id = c.id) as design_count
+                       COUNT(ci.design_id) as design_count
                 FROM collections c
                 JOIN users u ON c.user_id = u.id
+                LEFT JOIN collection_items ci ON c.id = ci.collection_id
                 WHERE c.id = ?
+                GROUP BY c.id
                 """,
                 (collection_id,),
             ).fetchone()
@@ -435,16 +443,19 @@ class SocialStore:
     ) -> list[CollectionSummary]:
         """List collections owned by a user."""
         with get_connection() as conn:
+            # Use LEFT JOIN instead of scalar subquery for efficiency
             if include_private:
                 rows = conn.execute(
                     """
                     SELECT c.id, c.name, c.description, c.is_public, c.created_at, c.updated_at,
                            u.id as user_id, u.display_name, u.avatar_url,
                            u.created_at as user_created_at,
-                           (SELECT COUNT(*) FROM collection_items WHERE collection_id = c.id) as design_count
+                           COUNT(ci.design_id) as design_count
                     FROM collections c
                     JOIN users u ON c.user_id = u.id
+                    LEFT JOIN collection_items ci ON c.id = ci.collection_id
                     WHERE c.user_id = ?
+                    GROUP BY c.id
                     ORDER BY c.updated_at DESC
                     LIMIT ? OFFSET ?
                     """,
@@ -456,10 +467,12 @@ class SocialStore:
                     SELECT c.id, c.name, c.description, c.is_public, c.created_at, c.updated_at,
                            u.id as user_id, u.display_name, u.avatar_url,
                            u.created_at as user_created_at,
-                           (SELECT COUNT(*) FROM collection_items WHERE collection_id = c.id) as design_count
+                           COUNT(ci.design_id) as design_count
                     FROM collections c
                     JOIN users u ON c.user_id = u.id
+                    LEFT JOIN collection_items ci ON c.id = ci.collection_id
                     WHERE c.user_id = ? AND c.is_public = 1
+                    GROUP BY c.id
                     ORDER BY c.updated_at DESC
                     LIMIT ? OFFSET ?
                     """,
@@ -490,15 +503,18 @@ class SocialStore:
     ) -> list[CollectionSummary]:
         """List all public collections for browsing."""
         with get_connection() as conn:
+            # Use LEFT JOIN instead of scalar subquery for efficiency
             rows = conn.execute(
                 """
                 SELECT c.id, c.name, c.description, c.is_public, c.created_at, c.updated_at,
                        u.id as user_id, u.display_name, u.avatar_url,
                        u.created_at as user_created_at,
-                       (SELECT COUNT(*) FROM collection_items WHERE collection_id = c.id) as design_count
+                       COUNT(ci.design_id) as design_count
                 FROM collections c
                 JOIN users u ON c.user_id = u.id
+                LEFT JOIN collection_items ci ON c.id = ci.collection_id
                 WHERE c.is_public = 1
+                GROUP BY c.id
                 ORDER BY c.updated_at DESC
                 LIMIT ? OFFSET ?
                 """,
@@ -642,49 +658,25 @@ class SocialStore:
             rows = conn.execute(
                 """
                 SELECT d.id, d.name, d.description, d.sequence, d.smiles,
-                       d.confidence_score, d.affinity_probability,
+                       d.confidence_score, d.complex_plddt, d.affinity_probability,
+                       d.preview_image, d.parent_design_id,
                        d.star_count, d.fork_count, d.comment_count,
                        d.created_at, u.id as user_id, u.display_name, u.avatar_url,
-                       u.created_at as user_created_at
+                       u.created_at as user_created_at,
+                       GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                 FROM collection_items ci
                 JOIN designs d ON ci.design_id = d.id
                 JOIN users u ON d.user_id = u.id
+                LEFT JOIN design_tags dt ON d.id = dt.design_id
                 WHERE ci.collection_id = ? AND d.is_public = 1
+                GROUP BY d.id
                 ORDER BY ci.added_at DESC
                 LIMIT ? OFFSET ?
                 """,
                 (collection_id, limit, offset),
             ).fetchall()
 
-            return [self._row_to_design_summary(row) for row in rows]
-
-    # =========================================================================
-    # Helpers
-    # =========================================================================
-
-    def _row_to_design_summary(self, row) -> DesignSummary:
-        """Convert a database row to DesignSummary."""
-        return DesignSummary(
-            id=row["id"],
-            name=row["name"],
-            description=row["description"],
-            sequence_length=len(row["sequence"]) if row["sequence"] else 0,
-            has_ligand=bool(row["smiles"]),
-            confidence_score=row["confidence_score"],
-            affinity_probability=row["affinity_probability"],
-            star_count=row["star_count"] or 0,
-            fork_count=row["fork_count"] or 0,
-            comment_count=row["comment_count"] or 0,
-            tags=[],
-            author=UserPublic(
-                id=row["user_id"],
-                display_name=row["display_name"],
-                avatar_url=row["avatar_url"],
-                created_at=row["user_created_at"],
-            ),
-            created_at=row["created_at"],
-        )
-
+            return [build_design_summary(dict(row)) for row in rows]
 
 @lru_cache()
 def get_social_store() -> SocialStore:

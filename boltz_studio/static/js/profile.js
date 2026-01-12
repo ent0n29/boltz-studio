@@ -93,11 +93,21 @@ function renderProfileContent() {
             </div>
         </div>
 
+        <div id="profile-reputation" class="profile-section">
+            <div class="loading-small">Loading reputation...</div>
+        </div>
+
+        <div id="profile-badges" class="profile-section">
+        </div>
+
         <div class="profile-section">
             <h3>Member since</h3>
             <p>${formatDate(user.created_at)}</p>
         </div>
     `;
+
+    // Load reputation and badges
+    loadProfileReputation(user.id);
 }
 
 async function toggleFollow(userId) {
@@ -312,6 +322,97 @@ function setupAuthorLinks() {
             showProfileModal(authorLink.dataset.authorId);
         }
     });
+}
+
+// Load and display reputation in profile
+async function loadProfileReputation(userId) {
+    const reputationSection = document.getElementById('profile-reputation');
+    const badgesSection = document.getElementById('profile-badges');
+
+    try {
+        // Load reputation and badges in parallel
+        const [repRes, badgesRes] = await Promise.all([
+            fetch(`/api/reputation/user/${userId}`),
+            fetch(`/api/reputation/badges/user/${userId}`)
+        ]);
+
+        if (repRes.ok) {
+            const reputation = await repRes.json();
+            reputationSection.innerHTML = `
+                <h3>Reputation</h3>
+                <div class="profile-reputation-display">
+                    <div class="reputation-score-large">${reputation.reputation_score}</div>
+                    <div class="reputation-details">
+                        <span class="reputation-rank-text">${reputation.rank ? `Rank #${reputation.rank}` : ''}</span>
+                        <span class="reputation-badges-count">${reputation.total_badges} badges earned</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            reputationSection.innerHTML = '';
+        }
+
+        if (badgesRes.ok) {
+            const badgesData = await badgesRes.json();
+            if (badgesData.badges && badgesData.badges.length > 0) {
+                const badgeItems = badgesData.badges.slice(0, 6).map(b => `
+                    <div class="profile-badge-item" title="${escapeHtml(b.badge.description)}">
+                        <span class="profile-badge-icon">${b.badge.icon || '?'}</span>
+                        <span class="profile-badge-name">${escapeHtml(b.badge.name)}</span>
+                    </div>
+                `).join('');
+
+                const showAllBtn = badgesData.badges.length > 6
+                    ? `<button class="btn btn-small btn-outline" onclick="showAllBadges('${userId}')">View All ${badgesData.total} Badges</button>`
+                    : '';
+
+                badgesSection.innerHTML = `
+                    <h3>Badges</h3>
+                    <div class="profile-badges-grid">${badgeItems}</div>
+                    ${showAllBtn}
+                `;
+            } else {
+                badgesSection.innerHTML = '';
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load reputation:', err);
+        reputationSection.innerHTML = '';
+        badgesSection.innerHTML = '';
+    }
+}
+
+// Show all badges modal
+async function showAllBadges(userId) {
+    const badges = await loadBadges(userId);
+    if (!badges) return;
+
+    const content = document.getElementById('profile-content');
+    const badgeItems = badges.badges.map(b => `
+        <div class="badge-item badge-tier-${b.badge.tier || 'none'}">
+            <span class="badge-icon">${b.badge.icon || '?'}</span>
+            <div class="badge-info">
+                <span class="badge-name">${escapeHtml(b.badge.name)}</span>
+                <span class="badge-description">${escapeHtml(b.badge.description)}</span>
+                <span class="badge-earned-date">Earned ${formatDate(b.earned_at)}</span>
+            </div>
+        </div>
+    `).join('');
+
+    content.innerHTML = `
+        <div class="follow-list-header">
+            <button class="btn btn-outline btn-small" onclick="showProfileModal('${userId}')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Back
+            </button>
+            <h3>All Badges (${badges.total})</h3>
+        </div>
+        <div class="all-badges-list">
+            ${badgeItems || '<div class="empty-state">No badges yet</div>'}
+        </div>
+    `;
 }
 
 // Initialize when DOM is ready

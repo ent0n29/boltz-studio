@@ -16,6 +16,7 @@ from ..models import (
     UserPublic,
 )
 from .database import get_connection
+from .utils import build_design_summary, parse_tags_from_group_concat
 
 logger = get_logger("design_store")
 
@@ -183,37 +184,6 @@ class DesignStore:
             parent_design_id=design.get("parent_design_id"),
         )
 
-    def _to_summary(self, design: dict[str, Any]) -> DesignSummary:
-        """Convert design dict to DesignSummary (lightweight, no PDB data)."""
-        # Calculate plddt (0-1 scale) from complex_plddt (0-100 scale)
-        plddt = None
-        if design.get("complex_plddt") is not None:
-            plddt = design["complex_plddt"] / 100.0
-
-        return DesignSummary(
-            id=design["id"],
-            name=design["name"],
-            description=design["description"],
-            sequence_length=len(design["sequence"]),
-            has_ligand=bool(design["smiles"]),
-            confidence_score=design["confidence_score"],
-            plddt=plddt,
-            affinity_probability=design["affinity_probability"],
-            preview_image=design.get("preview_image"),
-            tags=[TagInput(**t) for t in design["tags"]],
-            created_at=design["created_at"],
-            author=UserPublic(
-                id=design["author_id"],
-                display_name=design["author_name"],
-                avatar_url=design["author_avatar"],
-                created_at=design["author_created"],
-            ),
-            star_count=design.get("star_count") or 0,
-            fork_count=design.get("fork_count") or 0,
-            comment_count=design.get("comment_count") or 0,
-            parent_design_id=design.get("parent_design_id"),
-        )
-
     def update(
         self, design_id: str, user_id: str, updates: DesignUpdate
     ) -> bool:
@@ -340,30 +310,29 @@ class DesignStore:
             List of design summaries
         """
         with get_connection() as conn:
+            # Single query with tags via GROUP_CONCAT
             rows = conn.execute(
                 """
-                SELECT d.*, u.id as author_id, u.display_name as author_name,
-                       u.avatar_url as author_avatar, u.created_at as author_created
+                SELECT d.id, d.name, d.description, d.sequence, d.smiles,
+                       d.confidence_score, d.complex_plddt, d.affinity_probability,
+                       d.preview_image, d.parent_design_id,
+                       d.star_count, d.fork_count, d.comment_count,
+                       d.created_at,
+                       u.id as user_id, u.display_name, u.avatar_url,
+                       u.created_at as user_created_at,
+                       GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                 FROM designs d
                 JOIN users u ON d.user_id = u.id
+                LEFT JOIN design_tags dt ON d.id = dt.design_id
                 WHERE d.user_id = ?
+                GROUP BY d.id
                 ORDER BY d.created_at DESC
                 LIMIT ? OFFSET ?
                 """,
                 (user_id, limit, offset),
             ).fetchall()
 
-            result = []
-            for row in rows:
-                design = dict(row)
-                tags = conn.execute(
-                    "SELECT tag, tag_type FROM design_tags WHERE design_id = ?",
-                    (design["id"],),
-                ).fetchall()
-                design["tags"] = [dict(t) for t in tags]
-                result.append(self._to_summary(design))
-
-            return result
+            return [build_design_summary(dict(row)) for row in rows]
 
     def search(self, params: DesignSearchParams) -> DesignSearchResult:
         """Search public designs with filters.
@@ -441,30 +410,30 @@ class DesignStore:
             ).fetchone()
             total = count_row["total"] if count_row else 0
 
-            # Get results
+            # Get results with tags via GROUP_CONCAT
             rows = conn.execute(
                 f"""
-                SELECT d.*, u.id as author_id, u.display_name as author_name,
-                       u.avatar_url as author_avatar, u.created_at as author_created
+                SELECT d.id, d.name, d.description, d.sequence, d.smiles,
+                       d.confidence_score, d.complex_plddt, d.affinity_probability,
+                       d.preview_image, d.parent_design_id,
+                       d.star_count, d.fork_count, d.comment_count,
+                       d.created_at,
+                       u.id as user_id, u.display_name, u.avatar_url,
+                       u.created_at as user_created_at,
+                       GROUP_CONCAT(dt.tag || '|' || dt.tag_type) as tags_concat
                 FROM designs d
                 JOIN users u ON d.user_id = u.id
+                LEFT JOIN design_tags dt ON d.id = dt.design_id
                 WHERE {where_clause}
+                GROUP BY d.id
                 ORDER BY {order_clause}
                 LIMIT ? OFFSET ?
                 """,
                 values + [params.limit, params.offset],
             ).fetchall()
 
-            # Build result list with tags
-            designs = []
-            for row in rows:
-                design = dict(row)
-                tags = conn.execute(
-                    "SELECT tag, tag_type FROM design_tags WHERE design_id = ?",
-                    (design["id"],),
-                ).fetchall()
-                design["tags"] = [dict(t) for t in tags]
-                designs.append(self._to_summary(design))
+            # Build result list using shared utility
+            designs = [build_design_summary(dict(row)) for row in rows]
 
             return DesignSearchResult(
                 designs=designs,

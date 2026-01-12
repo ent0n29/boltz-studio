@@ -2984,3 +2984,729 @@ h1 {
         right: -80px;
     }
 }
+
+/* ============================================================================
+   Reputation & Badges
+   ============================================================================ */
+
+/* Reputation Badge */
+.reputation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #1e3a34, #0d2621);
+    border: 1px solid #0d9373;
+    border-radius: 20px;
+}
+
+.reputation-score {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0d9373;
+}
+
+.reputation-label {
+    font-size: 12px;
+    color: #6b8a80;
+    text-transform: uppercase;
+}
+
+.reputation-rank {
+    font-size: 14px;
+    color: #ffd700;
+    font-weight: 600;
+}
+
+/* Badge Items */
+.badges-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.badge-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #1e3a34;
+    border-radius: 10px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.badge-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.badge-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: #0d2621;
+    border: 2px solid #888;
+    border-radius: 50%;
+}
+
+.badge-icon-small {
+    font-size: 18px;
+}
+
+.badge-tier-bronze .badge-icon { border-color: #cd7f32; }
+.badge-tier-silver .badge-icon { border-color: #c0c0c0; }
+.badge-tier-gold .badge-icon { border-color: #ffd700; }
+.badge-tier-platinum .badge-icon { border-color: #e5e4e2; }
+
+.badge-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.badge-name {
+    display: block;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.badge-earned-date {
+    font-size: 12px;
+    color: #6b8a80;
+}
+
+.badges-empty {
+    text-align: center;
+    padding: 32px;
+    color: #6b8a80;
+}
+
+.badges-hint {
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+/* Badge Progress */
+.badge-progress-item {
+    padding: 12px;
+    background: #1e3a34;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.badge-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.badge-progress-name {
+    font-weight: 500;
+    color: #fff;
+}
+
+.badge-progress-bar-container {
+    height: 6px;
+    background: #0d2621;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.badge-progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.badge-progress-text {
+    font-size: 12px;
+    color: #6b8a80;
+}
+
+/* Reputation Breakdown */
+.reputation-breakdown {
+    background: #1e3a34;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #2d4a42;
+}
+
+.breakdown-item:last-child {
+    border-bottom: none;
+}
+
+.breakdown-label {
+    color: #c8d6d0;
+}
+
+.breakdown-value {
+    color: #0d9373;
+    font-weight: 500;
+}
+
+.breakdown-total {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0 0;
+    margin-top: 8px;
+    border-top: 2px solid #0d9373;
+}
+
+.breakdown-total .breakdown-label {
+    font-weight: 600;
+    color: #fff;
+}
+
+.breakdown-total .breakdown-value {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Leaderboard */
+.leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.leaderboard-entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #1e3a34;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.leaderboard-entry:hover {
+    background: #2d4a42;
+}
+
+.leaderboard-rank {
+    width: 40px;
+    font-weight: 600;
+    color: #6b8a80;
+}
+
+.leaderboard-rank-1 .leaderboard-rank { color: #ffd700; font-size: 18px; }
+.leaderboard-rank-2 .leaderboard-rank { color: #c0c0c0; font-size: 16px; }
+.leaderboard-rank-3 .leaderboard-rank { color: #cd7f32; font-size: 16px; }
+
+.leaderboard-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.leaderboard-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.leaderboard-name {
+    display: block;
+    font-weight: 600;
+    color: #fff;
+}
+
+.leaderboard-badges {
+    font-size: 12px;
+    color: #6b8a80;
+}
+
+.leaderboard-score {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0d9373;
+}
+
+.leaderboard-empty {
+    text-align: center;
+    padding: 24px;
+    color: #6b8a80;
+}
+
+/* Reputation Summary */
+.reputation-summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    background: #0d2621;
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.reputation-stats {
+    color: #6b8a80;
+    font-size: 14px;
+}
+
+/* Reputation Modal */
+.reputation-modal-body {
+    padding: 20px;
+}
+
+.reputation-modal-body h3 {
+    margin: 24px 0 12px;
+    color: #fff;
+    font-size: 16px;
+}
+
+.reputation-modal-body h3:first-of-type {
+    margin-top: 0;
+}
+
+/* ============================================================================
+   Organizations
+   ============================================================================ */
+
+/* Organization Modal */
+.org-profile-modal {
+    max-width: 600px;
+}
+
+.org-header {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.org-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #1e3a34;
+    flex-shrink: 0;
+}
+
+.org-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.org-avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: #0d9373;
+    background: #0d2621;
+}
+
+.org-info {
+    flex: 1;
+}
+
+.org-name {
+    margin: 0 0 4px;
+    font-size: 24px;
+    color: #fff;
+}
+
+.org-slug {
+    color: #6b8a80;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.org-website {
+    color: #0d9373;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.org-website:hover {
+    text-decoration: underline;
+}
+
+.org-description {
+    color: #c8d6d0;
+    margin: 0 0 20px;
+    line-height: 1.5;
+}
+
+.org-stats {
+    display: flex;
+    gap: 32px;
+    padding: 16px 0;
+    border-top: 1px solid #2d4a42;
+    border-bottom: 1px solid #2d4a42;
+    margin-bottom: 20px;
+}
+
+/* Organization Tabs */
+.org-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.org-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid #2d4a42;
+    border-radius: 6px;
+    color: #c8d6d0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.org-tab:hover {
+    background: #1e3a34;
+}
+
+.org-tab.active {
+    background: #0d9373;
+    border-color: #0d9373;
+    color: #fff;
+}
+
+/* Members List */
+.members-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.members-count {
+    color: #6b8a80;
+    font-size: 14px;
+}
+
+.members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #1e3a34;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.member-item:hover {
+    background: #2d4a42;
+}
+
+.member-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.member-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.member-name {
+    font-weight: 500;
+    color: #fff;
+}
+
+.role-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+}
+
+.member-role-owner {
+    background: #ffd700;
+    color: #000;
+}
+
+.member-role-admin {
+    background: #0d9373;
+    color: #fff;
+}
+
+.member-joined {
+    font-size: 12px;
+    color: #6b8a80;
+}
+
+/* Add Member Form */
+.add-member-form {
+    padding: 16px;
+    background: #0d2621;
+    border-radius: 10px;
+}
+
+.add-member-form h4 {
+    margin: 0 0 16px;
+    color: #fff;
+}
+
+/* Organization Browse */
+.org-browse-actions {
+    margin-bottom: 16px;
+}
+
+.org-browse-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.org-browse-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #1e3a34;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.org-browse-item:hover {
+    background: #2d4a42;
+}
+
+.org-browse-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #0d2621;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.org-browse-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.org-browse-avatar span {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0d9373;
+}
+
+.org-browse-info {
+    flex: 1;
+}
+
+.org-browse-name {
+    display: block;
+    font-weight: 600;
+    color: #fff;
+}
+
+.org-browse-members {
+    font-size: 13px;
+    color: #6b8a80;
+}
+
+/* Organization Item (in menus) */
+.org-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.org-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.org-item:hover {
+    background: #1e3a34;
+}
+
+.org-item-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #0d2621;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.org-item-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.org-item-avatar span {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0d9373;
+}
+
+.org-item-info {
+    flex: 1;
+}
+
+.org-item-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.org-item-members {
+    font-size: 12px;
+    color: #6b8a80;
+}
+
+/* Danger Zone */
+.danger-zone {
+    margin-top: 32px;
+    padding: 16px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+}
+
+.danger-zone h4 {
+    margin: 0 0 12px;
+    color: #ef4444;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+/* Profile Reputation Display */
+.profile-reputation-display {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: #1e3a34;
+    border-radius: 10px;
+}
+
+.reputation-score-large {
+    font-size: 36px;
+    font-weight: 700;
+    color: #0d9373;
+}
+
+.reputation-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.reputation-rank-text {
+    font-size: 14px;
+    color: #ffd700;
+    font-weight: 600;
+}
+
+.reputation-badges-count {
+    font-size: 13px;
+    color: #6b8a80;
+}
+
+/* Profile Badges Grid */
+.profile-badges-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.profile-badge-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #1e3a34;
+    border-radius: 16px;
+    cursor: default;
+}
+
+.profile-badge-icon {
+    font-size: 16px;
+}
+
+.profile-badge-name {
+    font-size: 13px;
+    color: #c8d6d0;
+}
+
+/* All Badges List */
+.all-badges-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.badge-description {
+    display: block;
+    font-size: 12px;
+    color: #6b8a80;
+    margin-top: 2px;
+}
+
+/* Empty State Small */
+.empty-state-small {
+    text-align: center;
+    padding: 16px;
+    color: #6b8a80;
+}
+
+.empty-state-small p {
+    margin: 0 0 12px;
+}
+
+/* Loading Small */
+.loading-small {
+    padding: 8px;
+    color: #6b8a80;
+    font-size: 13px;
+}

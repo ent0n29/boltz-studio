@@ -69,6 +69,18 @@ from .organization import (
     OrgMemberList,
     OrgRoleUpdate,
 )
+from .reputation import (
+    BadgeDefinition,
+    BadgeList,
+    BadgeProgress,
+    BadgeProgressList,
+    ReputationBreakdown,
+    ReputationLeaderboard,
+    ReputationLeaderboardEntry,
+    UserBadge,
+    UserBadgeList,
+    UserReputation,
+)
 
 __all__ = [
     # Prediction models
@@ -125,4 +137,15 @@ __all__ = [
     "OrgMember",
     "OrgMemberList",
     "OrgRoleUpdate",
+    # Reputation models
+    "BadgeDefinition",
+    "BadgeList",
+    "BadgeProgress",
+    "BadgeProgressList",
+    "ReputationBreakdown",
+    "ReputationLeaderboard",
+    "ReputationLeaderboardEntry",
+    "UserBadge",
+    "UserBadgeList",
+    "UserReputation",
 ]

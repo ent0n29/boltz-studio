@@ -140,3 +140,56 @@ def rate_limit_dependency() -> Callable:
         await limiter.check(request)
 
     return check_rate_limit
+
+
+# Endpoint-specific rate limiters
+_endpoint_limiters: dict[str, RateLimiter] = {}
+
+
+def get_endpoint_limiter(endpoint: str, rpm: int) -> RateLimiter:
+    """Get or create an endpoint-specific rate limiter.
+
+    Args:
+        endpoint: Endpoint name/identifier
+        rpm: Requests per minute for this endpoint
+
+    Returns:
+        RateLimiter instance
+    """
+    global _endpoint_limiters
+    if endpoint not in _endpoint_limiters:
+        _endpoint_limiters[endpoint] = RateLimiter(rpm)
+    return _endpoint_limiters[endpoint]
+
+
+def rate_limit(rpm: int = 60):
+    """Create a rate limit dependency with custom RPM.
+
+    Usage:
+        @router.post("/export")
+        async def export(
+            request: Request,
+            _: None = Depends(rate_limit(rpm=10)),
+        ):
+            ...
+
+    Args:
+        rpm: Requests per minute
+
+    Returns:
+        Dependency callable
+    """
+    async def check_rate_limit(request: Request) -> None:
+        # Use path as endpoint identifier
+        endpoint = request.url.path
+        limiter = get_endpoint_limiter(endpoint, rpm)
+        await limiter.check(request)
+
+    return check_rate_limit
+
+
+# Pre-configured rate limits for common operations
+auth_rate_limit = rate_limit(rpm=10)  # Auth operations: 10/min
+prediction_rate_limit = rate_limit(rpm=5)  # Predictions: 5/min
+export_rate_limit = rate_limit(rpm=10)  # Exports: 10/min
+search_rate_limit = rate_limit(rpm=30)  # Searches: 30/min

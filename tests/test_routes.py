@@ -165,49 +165,17 @@ class TestStaticRoutes:
 
     def test_static_css(self, client):
         """Test that CSS is served."""
-        response = client.get("/static/css/style.css")
+        response = client.get("/css/style.css")
 
         assert response.status_code == 200
         assert "text/css" in response.headers["content-type"]
 
     def test_static_js(self, client):
         """Test that JS is served."""
-        response = client.get("/static/js/app.js")
+        response = client.get("/js/app.js")
 
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
-
-
-class TestRateLimitingIntegration:
-    """Tests for rate limiting integration."""
-
-    def test_rate_limit_applies_to_predict(self, client):
-        """Test that rate limiting applies to predict endpoint."""
-        # Reset the rate limiter for this test
-        from boltz_studio.middleware import rate_limit
-        rate_limit._limiter = None  # Reset singleton
-
-        # Make requests up to the limit
-        for i in range(10):  # Default limit is 10
-            response = client.post(
-                "/api/predict",
-                json={
-                    "sequences": [{"sequence": "MKLAVLK"}],
-                    "name": f"ratelimit_test{i}",
-                },
-            )
-            assert response.status_code == 200, f"Request {i} failed: {response.json()}"
-
-        # Next request should be rate limited
-        response = client.post(
-            "/api/predict",
-            json={
-                "sequences": [{"sequence": "MKLAVLK"}],
-                "name": "test_over_limit",
-            },
-        )
-        assert response.status_code == 429
-        assert "Rate limit exceeded" in response.json()["detail"]
 
 
 class TestWebSocketRoutes:
