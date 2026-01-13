@@ -104,6 +104,15 @@ class SocialStore:
             ).fetchone()
             return result is not None
 
+    def get_star_count(self, design_id: str) -> int:
+        """Get the star count for a design."""
+        with get_connection() as conn:
+            result = conn.execute(
+                "SELECT star_count FROM designs WHERE id = ?",
+                (design_id,),
+            ).fetchone()
+            return result[0] if result else 0
+
     def get_user_starred_designs(
         self, user_id: str, offset: int = 0, limit: int = 20
     ) -> list[DesignSummary]:

@@ -8,6 +8,7 @@ let designTargets = [];
 let selectedTarget = null;
 let designJobs = [];
 let currentCategory = 'all';
+let currentJobFilter = 'all';
 let jobProgressEventSource = null;
 let targetViewer = null;
 let resultViewer = null;
@@ -278,18 +279,26 @@ async function startDesignJob() {
     btn.innerHTML = 'Starting...';
 
     try {
+        // Build request body - use custom_target_pdb if no target_id
+        const requestBody = {
+            name: jobName,
+            protocol: protocol,
+            num_designs: numDesigns,
+            binder_length_min: binderMin,
+            binder_length_max: binderMax
+        };
+
+        if (selectedTarget.id) {
+            requestBody.target_id = selectedTarget.id;
+        } else if (selectedTarget.custom_pdb) {
+            requestBody.custom_target_pdb = selectedTarget.custom_pdb;
+        }
+
         const response = await fetch('/api/design/jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({
-                name: jobName,
-                target_id: selectedTarget.id,
-                protocol: protocol,
-                num_designs: numDesigns,
-                binder_length_min: binderMin,
-                binder_length_max: binderMax
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -340,36 +349,53 @@ async function loadDesignJobs() {
 
 function renderDesignJobs() {
     const list = document.getElementById('design-jobs-list');
-    const empty = document.getElementById('jobs-empty');
+    const filteredJobs = getFilteredJobs();
 
-    if (!designJobs || designJobs.length === 0) {
-        if (empty) empty.style.display = 'flex';
+    if (!filteredJobs || filteredJobs.length === 0) {
+        const emptyMessage = currentJobFilter === 'all'
+            ? 'No design jobs yet'
+            : `No ${currentJobFilter} jobs`;
+        const emptyHint = currentJobFilter === 'all'
+            ? 'Select a target above to start designing binders'
+            : 'Try a different filter';
+
         list.innerHTML = `
-            <div class="jobs-empty" id="jobs-empty">
+            <div class="jobs-empty">
                 <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1">
                     <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                     <path d="M2 17l10 5 10-5"/>
                     <path d="M2 12l10 5 10-5"/>
                 </svg>
-                <p>No design jobs yet</p>
-                <p class="hint">Select a target above to start designing binders</p>
+                <p>${emptyMessage}</p>
+                <p class="hint">${emptyHint}</p>
             </div>
         `;
         return;
     }
 
-    list.innerHTML = designJobs.map(job => `
+    const isRunning = (status) => ['queued', 'generating', 'folding', 'analyzing', 'filtering'].includes(status);
+
+    list.innerHTML = filteredJobs.map(job => `
         <div class="job-card" data-job-id="${job.id}">
             <div class="job-header">
-                <h4 class="job-name">${job.name}</h4>
-                <span class="job-status ${job.status}">${formatStatus(job.status)}</span>
+                <h4 class="job-name">${escapeHtml(job.name)}</h4>
+                <div class="job-header-actions">
+                    <span class="job-status ${job.status}">${formatJobStatus(job.status)}</span>
+                    ${!isRunning(job.status) ? `
+                        <button class="btn-icon btn-delete" onclick="deleteJob('${job.id}')" title="Delete job">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    ` : ''}
+                </div>
             </div>
             <div class="job-meta">
                 <span>Protocol: ${formatProtocol(job.protocol)}</span>
                 <span>${job.num_designs} designs</span>
-                <span>${formatDate(job.created_at)}</span>
+                <span>${formatDateTime(job.created_at)}</span>
             </div>
-            ${job.status === 'generating' || job.status === 'queued' || job.status === 'folding' ? `
+            ${isRunning(job.status) ? `
                 <div class="job-progress">
                     <div class="job-progress-bar" style="width: ${job.progress * 100}%"></div>
                 </div>
@@ -382,18 +408,75 @@ function renderDesignJobs() {
                 </div>
             ` : ''}
             ${job.status === 'failed' ? `
-                <div class="job-error">${job.error || 'Job failed'}</div>
+                <div class="job-error-compact">
+                    ${job.error ? `<button class="btn-link" onclick="toggleJobError('${job.id}')">Show error details</button>` : ''}
+                </div>
+                <div class="job-error-details" id="error-${job.id}" style="display:none;">
+                    ${escapeHtml(job.error || 'Unknown error')}
+                </div>
             ` : ''}
         </div>
     `).join('');
 }
 
-function formatStatus(status) {
+// Job filter functions
+function setJobFilter(filter) {
+    currentJobFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.filter === filter);
+    });
+    renderDesignJobs();
+}
+
+function getFilteredJobs() {
+    if (!designJobs) return [];
+    if (currentJobFilter === 'all') return designJobs;
+
+    const statusMap = {
+        'running': ['queued', 'generating', 'folding', 'analyzing', 'filtering', 'downloading_models'],
+        'completed': ['completed'],
+        'failed': ['failed', 'cancelled']
+    };
+
+    return designJobs.filter(job => statusMap[currentJobFilter]?.includes(job.status));
+}
+
+function toggleJobError(jobId) {
+    const el = document.getElementById(`error-${jobId}`);
+    if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+async function deleteJob(jobId) {
+    if (!confirm('Delete this job?')) return;
+
+    try {
+        const res = await fetch(`/api/design/jobs/${jobId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (res.ok) {
+            designJobs = designJobs.filter(j => j.id !== jobId);
+            renderDesignJobs();
+            if (window.showToast) showToast('Job deleted');
+        } else {
+            const data = await res.json();
+            if (window.showToast) showToast(data.detail || 'Failed to delete job', 'error');
+        }
+    } catch (err) {
+        console.error('Failed to delete job:', err);
+        if (window.showToast) showToast('Failed to delete job', 'error');
+    }
+}
+
+function formatJobStatus(status) {
     const names = {
         'queued': 'Queued',
         'downloading_models': 'Downloading',
         'generating': 'Generating',
-        'folding': 'Folding',
+        'folding': 'Running',
         'analyzing': 'Analyzing',
         'filtering': 'Filtering',
         'completed': 'Completed',
@@ -412,11 +495,6 @@ function formatProtocol(protocol) {
         'protein-small_molecule': 'Small Molecule'
     };
     return names[protocol] || protocol;
-}
-
-function formatDate(dateStr) {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function subscribeToJobProgress(jobId) {
@@ -459,68 +537,104 @@ function updateJobProgress(progress) {
 }
 
 // ===========================================
-// RESULTS VIEWER
+// RESULTS PAGE (Full Page View)
 // ===========================================
 
 async function viewJobResults(jobId) {
-    const modal = document.getElementById('design-results-modal');
-    modal.classList.add('visible');
+    navigateTo(`/design/results/${jobId}`);
+}
+
+let pageResultViewer = null;
+let pageResults = [];
+let pageResultIndex = 0;
+let currentPageJobId = null;
+
+// Initialize results page when it becomes visible
+document.addEventListener('DOMContentLoaded', () => {
+    const resultsPage = document.getElementById('results-page');
+    if (resultsPage) {
+        resultsPage.addEventListener('pageshow', async (e) => {
+            const jobId = e.detail?.params;
+            if (jobId) {
+                await loadResultsPage(jobId);
+            }
+        });
+    }
+});
+
+async function loadResultsPage(jobId) {
+    currentPageJobId = jobId;
 
     try {
+        // Load job info
+        const jobResponse = await fetch(`/api/design/jobs/${jobId}`, { credentials: 'include' });
+        if (jobResponse.ok) {
+            const job = await jobResponse.json();
+            document.getElementById('results-job-name').textContent = job.name || 'Design Results';
+        }
+
+        // Load results
         const response = await fetch(`/api/design/jobs/${jobId}/results?limit=50`);
         if (!response.ok) throw new Error('Failed to load results');
 
         const data = await response.json();
-        currentResults = data.results;
+        pageResults = data.results;
 
-        renderResultsList();
+        document.getElementById('results-total-count').textContent = pageResults.length;
 
-        if (currentResults.length > 0) {
-            selectResult(0);
+        renderPageResultsList();
+
+        if (pageResults.length > 0) {
+            selectPageResult(0);
         }
     } catch (error) {
-        console.error('Error loading results:', error);
+        console.error('Error loading results page:', error);
         showToast('Failed to load results', 'error');
     }
 }
 
-function renderResultsList() {
-    const list = document.getElementById('design-results-list');
+function renderPageResultsList() {
+    const list = document.getElementById('results-page-list');
 
-    list.innerHTML = currentResults.map((result, index) => `
-        <div class="result-item ${index === currentResultIndex ? 'active' : ''}"
-             onclick="selectResult(${index})">
-            <div class="result-item-header">
-                <span class="result-item-rank">Rank #${result.rank}</span>
-                <span class="result-item-score">${result.plddt_score ? result.plddt_score.toFixed(1) : '-'}</span>
+    if (pageResults.length === 0) {
+        list.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--text-secondary);">No results found</div>';
+        return;
+    }
+
+    list.innerHTML = pageResults.map((result, index) => `
+        <div class="result-list-item ${index === pageResultIndex ? 'active' : ''}"
+             onclick="selectPageResult(${index})">
+            <div class="result-rank-badge">#${result.rank}</div>
+            <div class="result-list-info">
+                <div class="result-list-score">${result.plddt_score ? result.plddt_score.toFixed(1) : '-'} pLDDT</div>
+                <div class="result-list-meta">${result.sequence?.length || 0} residues</div>
             </div>
-            <div class="result-item-sequence">${result.sequence.substring(0, 30)}...</div>
         </div>
     `).join('');
 }
 
-async function selectResult(index) {
-    currentResultIndex = index;
-    const result = currentResults[index];
+async function selectPageResult(index) {
+    pageResultIndex = index;
+    const result = pageResults[index];
 
     // Update list selection
-    document.querySelectorAll('.result-item').forEach((item, i) => {
+    document.querySelectorAll('.result-list-item').forEach((item, i) => {
         item.classList.toggle('active', i === index);
     });
 
-    // Show detail section
-    document.getElementById('result-detail-section').style.display = 'flex';
+    // Update detail panel
+    const plddtValue = result.plddt_score ? result.plddt_score.toFixed(1) : '-';
+    const plddtEl = document.getElementById('result-page-plddt');
+    plddtEl.textContent = plddtValue;
+    plddtEl.className = 'score-card-value ' + getScoreClass(result.plddt_score, 90, 70);
 
-    // Update result info
-    document.getElementById('result-detail-rank').textContent = result.rank;
-    document.getElementById('result-detail-plddt').textContent = result.plddt_score ? result.plddt_score.toFixed(1) : '-';
-    document.getElementById('result-detail-ptm').textContent = result.ptm_score ? result.ptm_score.toFixed(2) : '-';
-    document.getElementById('result-detail-confidence').textContent = result.confidence_score ? result.confidence_score.toFixed(2) : '-';
-    document.getElementById('result-detail-sequence').textContent = result.sequence;
-    document.getElementById('result-detail-length').textContent = result.sequence.length;
+    document.getElementById('result-page-ptm').textContent = result.ptm_score ? result.ptm_score.toFixed(2) : '-';
+    document.getElementById('result-page-confidence').textContent = result.confidence_score ? result.confidence_score.toFixed(2) : '-';
+    document.getElementById('result-page-length').textContent = result.sequence?.length || '-';
+    document.getElementById('result-page-sequence').textContent = result.sequence || '-';
 
     // Update publish button
-    const publishBtn = document.getElementById('publish-result-btn');
+    const publishBtn = document.getElementById('publish-page-result-btn');
     if (result.is_published) {
         publishBtn.disabled = true;
         publishBtn.innerHTML = 'Published';
@@ -537,19 +651,26 @@ async function selectResult(index) {
     }
 
     // Load 3D structure
-    await loadResultStructure(result);
+    await loadPageResultStructure(result);
 }
 
-async function loadResultStructure(result) {
-    const viewerDiv = document.getElementById('result-viewer-3d');
+function getScoreClass(score, highThreshold, mediumThreshold) {
+    if (!score) return '';
+    if (score >= highThreshold) return 'high';
+    if (score >= mediumThreshold) return 'medium';
+    return 'low';
+}
 
-    if (!resultViewer) {
-        resultViewer = $3Dmol.createViewer(viewerDiv, {
-            backgroundColor: '#1a1a1a'
+async function loadPageResultStructure(result) {
+    const viewerDiv = document.getElementById('result-page-viewer');
+
+    if (!pageResultViewer) {
+        pageResultViewer = $3Dmol.createViewer(viewerDiv, {
+            backgroundColor: '#f0fdfa'
         });
     }
 
-    resultViewer.clear();
+    pageResultViewer.clear();
 
     // Fetch full result with structure
     try {
@@ -558,10 +679,10 @@ async function loadResultStructure(result) {
             const fullResult = await response.json();
 
             if (fullResult.structure_pdb) {
-                resultViewer.addModel(fullResult.structure_pdb, 'pdb');
+                pageResultViewer.addModel(fullResult.structure_pdb, 'pdb');
 
                 // Color by pLDDT (AlphaFold coloring)
-                resultViewer.setStyle({}, {
+                pageResultViewer.setStyle({}, {
                     cartoon: {
                         colorfunc: (atom) => {
                             const b = atom.b;
@@ -573,8 +694,8 @@ async function loadResultStructure(result) {
                     }
                 });
 
-                resultViewer.zoomTo();
-                resultViewer.render();
+                pageResultViewer.zoomTo();
+                pageResultViewer.render();
             }
         }
     } catch (error) {
@@ -582,19 +703,47 @@ async function loadResultStructure(result) {
     }
 }
 
-function hideDesignResultsModal() {
-    document.getElementById('design-results-modal').classList.remove('visible');
+function sortPageResults() {
+    const sortBy = document.getElementById('results-page-sort').value;
+
+    const sortedResults = [...pageResults].sort((a, b) => {
+        switch (sortBy) {
+            case 'plddt':
+                return (b.plddt_score || 0) - (a.plddt_score || 0);
+            case 'length':
+                return (b.sequence?.length || 0) - (a.sequence?.length || 0);
+            case 'confidence':
+                return (b.confidence_score || 0) - (a.confidence_score || 0);
+            case 'rank':
+            default:
+                return a.rank - b.rank;
+        }
+    });
+
+    pageResults = sortedResults;
+    renderPageResultsList();
 }
 
-function downloadCurrentResultPdb() {
-    const result = currentResults[currentResultIndex];
+function downloadPageResultPdb() {
+    const result = pageResults[pageResultIndex];
     if (result) {
         window.open(`/api/design/results/${result.id}/pdb`, '_blank');
     }
 }
 
-async function publishCurrentResult() {
-    const result = currentResults[currentResultIndex];
+function copyPageSequence() {
+    const result = pageResults[pageResultIndex];
+    if (result?.sequence) {
+        navigator.clipboard.writeText(result.sequence).then(() => {
+            showToast('Sequence copied to clipboard', 'success');
+        }).catch(() => {
+            showToast('Failed to copy sequence', 'error');
+        });
+    }
+}
+
+async function publishPageResult() {
+    const result = pageResults[pageResultIndex];
     if (!result || result.is_published) return;
 
     try {
@@ -604,12 +753,11 @@ async function publishCurrentResult() {
 
         if (!response.ok) throw new Error('Failed to publish');
 
-        const data = await response.json();
         showToast('Design published to community!', 'success');
 
         result.is_published = true;
-        document.getElementById('publish-result-btn').disabled = true;
-        document.getElementById('publish-result-btn').innerHTML = 'Published';
+        document.getElementById('publish-page-result-btn').disabled = true;
+        document.getElementById('publish-page-result-btn').innerHTML = 'Published';
 
     } catch (error) {
         console.error('Error publishing:', error);
@@ -754,7 +902,7 @@ function renderOrders() {
                 <div class="order-cost">Est. $${(order.estimated_cost || 0).toFixed(2)}</div>
             </div>
             <div class="order-meta">
-                <span>Created ${formatDate(order.created_at)}</span>
+                <span>Created ${formatDateShort(order.created_at)}</span>
                 ${order.tracking_url ? `<a href="${order.tracking_url}" target="_blank" class="tracking-link">Track</a>` : ''}
             </div>
             <div class="order-actions">
@@ -796,11 +944,7 @@ function formatOrderType(type) {
     return names[type] || type;
 }
 
-function formatDate(dateStr) {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString();
-}
+// Note: formatDate functions moved to utils.js (formatDateTime, formatDateShort)
 
 function getOrderActions(order) {
     switch (order.status) {
@@ -944,11 +1088,153 @@ async function submitValidation() {
 }
 
 // ===========================================
-// UTILITIES
+// CUSTOM TARGET UPLOAD (Inline)
 // ===========================================
 
+var inlineTargetViewer = null;
+var inlineTargetPdb = null;
+
+function toggleCustomTargetUpload() {
+    var zone = document.getElementById('custom-target-upload-zone');
+    if (zone.style.display === 'none') {
+        showCustomTargetUpload();
+    } else {
+        hideCustomTargetUpload();
+    }
+}
+
+function showCustomTargetUpload() {
+    var zone = document.getElementById('custom-target-upload-zone');
+    zone.style.display = 'block';
+    // Reset state
+    inlineTargetPdb = null;
+    document.getElementById('inline-pdb-filename').textContent = 'Drop PDB/CIF file or click to browse';
+    document.getElementById('inline-target-preview').style.display = 'none';
+    document.getElementById('inline-use-target-btn').disabled = true;
+    var dropZone = document.getElementById('inline-pdb-drop-zone');
+    if (dropZone) dropZone.classList.remove('has-file');
+}
+
+function hideCustomTargetUpload() {
+    document.getElementById('custom-target-upload-zone').style.display = 'none';
+    if (inlineTargetViewer) {
+        inlineTargetViewer.clear();
+    }
+}
+
+function handleInlineCustomPdbDrop(event) {
+    event.preventDefault();
+    event.target.classList.remove('dragover');
+    var file = event.dataTransfer.files[0];
+    if (file) {
+        processInlineCustomPdbFile(file);
+    }
+}
+
+function handleInlineCustomPdbSelect(event) {
+    var file = event.target.files[0];
+    if (file) {
+        processInlineCustomPdbFile(file);
+    }
+}
+
+async function processInlineCustomPdbFile(file) {
+    var validExtensions = ['.pdb', '.cif', '.ent'];
+    var ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+
+    if (validExtensions.indexOf(ext) === -1) {
+        showToast('Please upload a .pdb or .cif file', 'error');
+        return;
+    }
+
+    document.getElementById('inline-pdb-filename').textContent = file.name;
+    var dropZone = document.getElementById('inline-pdb-drop-zone');
+    if (dropZone) dropZone.classList.add('has-file');
+
+    try {
+        var content = await file.text();
+        inlineTargetPdb = content;
+
+        // Parse basic info from PDB/CIF
+        var chains = new Set();
+        var residueCount = 0;
+
+        if (ext === '.cif') {
+            var chainMatches = content.match(/label_asym_id\s+(\w+)/g);
+            if (chainMatches) {
+                chainMatches.forEach(function(m) { chains.add(m.split(/\s+/)[1]); });
+            }
+            residueCount = (content.match(/^ATOM\s/gm) || []).length / 10;
+        } else {
+            var lines = content.split('\n');
+            var seenResidues = new Set();
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                if (line.indexOf('ATOM') === 0 || line.indexOf('HETATM') === 0) {
+                    var chain = line.charAt(21);
+                    var resNum = line.substring(22, 26).trim();
+                    chains.add(chain);
+                    seenResidues.add(chain + ':' + resNum);
+                }
+            }
+            residueCount = seenResidues.size;
+        }
+
+        // Update preview info
+        document.getElementById('inline-target-chains').textContent = 'Chains: ' + Array.from(chains).join(', ');
+        document.getElementById('inline-target-residues').textContent = 'Residues: ~' + residueCount;
+
+        // Show preview and enable button
+        document.getElementById('inline-target-preview').style.display = 'block';
+        document.getElementById('inline-use-target-btn').disabled = false;
+
+        // Initialize 3D viewer
+        var viewerDiv = document.getElementById('inline-target-viewer');
+        if (!inlineTargetViewer) {
+            inlineTargetViewer = $3Dmol.createViewer(viewerDiv, {
+                backgroundColor: '#f0fdfa'
+            });
+        }
+        inlineTargetViewer.clear();
+
+        var format = ext === '.cif' ? 'cif' : 'pdb';
+        inlineTargetViewer.addModel(content, format);
+        inlineTargetViewer.setStyle({}, {cartoon: {color: 'spectrum'}});
+        inlineTargetViewer.zoomTo();
+        inlineTargetViewer.render();
+
+    } catch (error) {
+        console.error('Error processing file:', error);
+        showToast('Failed to parse structure file', 'error');
+    }
+}
+
+function useInlineCustomTarget() {
+    if (!inlineTargetPdb) {
+        showToast('Please upload a structure file first', 'error');
+        return;
+    }
+
+    // Store custom target for design job
+    selectedTarget = {
+        id: null,
+        name: 'Custom Target',
+        custom_pdb: inlineTargetPdb
+    };
+
+    hideCustomTargetUpload();
+
+    // Show design params section
+    document.getElementById('design-params-section').style.display = 'block';
+
+    // Update UI to show custom target selected
+    document.querySelectorAll('.target-card').forEach(function(card) { card.classList.remove('selected'); });
+    showToast('Custom target loaded! Configure your design parameters.', 'success');
+}
+
+// Legacy modal function redirect
 function showCustomTargetModal() {
-    showToast('Custom target upload coming soon!', 'info');
+    toggleCustomTargetUpload();
 }
 
 function showToast(message, type = 'info') {

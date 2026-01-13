@@ -47,18 +47,23 @@ async def star_design(
     if not design:
         raise HTTPException(status_code=404, detail="Design not found")
 
-    if social_store.add_star(design_id, user.id):
-        # Notify design owner
-        notification_store.create(
-            user_id=design.author_id,
-            notification_type="star",
-            message=f"{user.display_name} starred your design \"{design.name}\"",
-            actor_id=user.id,
-            target_type="design",
-            target_id=design_id,
-        )
-        return {"message": "Design starred"}
-    return {"message": "Already starred"}
+    was_added = social_store.add_star(design_id, user.id)
+
+    if was_added:
+        # Notify design owner (only if not starring own design)
+        if design.author.id != user.id:
+            notification_store.create(
+                user_id=design.author.id,
+                notification_type="star",
+                message=f"{user.display_name} starred your design \"{design.name}\"",
+                actor_id=user.id,
+                target_type="design",
+                target_id=design_id,
+            )
+
+    # Get updated star count
+    star_count = social_store.get_star_count(design_id)
+    return {"starred": True, "star_count": star_count}
 
 
 @router.delete("/designs/{design_id}/star")
@@ -68,9 +73,9 @@ async def unstar_design(
     social_store: SocialStore = Depends(get_social_store),
 ) -> dict:
     """Unstar a design."""
-    if social_store.remove_star(design_id, user.id):
-        return {"message": "Design unstarred"}
-    return {"message": "Was not starred"}
+    social_store.remove_star(design_id, user.id)
+    star_count = social_store.get_star_count(design_id)
+    return {"starred": False, "star_count": star_count}
 
 
 @router.get("/users/me/starred", response_model=list[DesignSummary])
@@ -129,15 +134,16 @@ async def fork_design(
     # Record the fork relationship
     social_store.create_fork(design_id, user.id, fork_design_id, request)
 
-    # Notify design owner
-    notification_store.create(
-        user_id=parent.author_id,
-        notification_type="fork",
-        message=f"{user.display_name} forked your design \"{parent.name}\"",
-        actor_id=user.id,
-        target_type="design",
-        target_id=fork_design_id,
-    )
+    # Notify design owner (only if not forking own design)
+    if parent.author.id != user.id:
+        notification_store.create(
+            user_id=parent.author.id,
+            notification_type="fork",
+            message=f"{user.display_name} forked your design \"{parent.name}\"",
+            actor_id=user.id,
+            target_type="design",
+            target_id=fork_design_id,
+        )
 
     return {
         "message": "Design forked successfully",
@@ -195,7 +201,7 @@ async def create_comment(
     # Notify design owner
     preview = comment.content[:50] + "..." if len(comment.content) > 50 else comment.content
     notification_store.create(
-        user_id=design.author_id,
+        user_id=design.author.id,
         notification_type="comment",
         message=f"{user.display_name} commented on \"{design.name}\": {preview}",
         actor_id=user.id,

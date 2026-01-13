@@ -1,33 +1,185 @@
 // Profile features - user profiles, following, followers
 
-let profileModalUser = null;
+let currentProfileUser = null;
 let isEditingProfile = false;
 
-// Show user profile modal
-async function showProfileModal(userId) {
-    const modal = document.getElementById('profile-modal');
-    modal.classList.add('visible');
-
-    const content = document.getElementById('profile-content');
-    content.innerHTML = '<div class="loading">Loading profile...</div>';
-
-    try {
-        const res = await fetch(`/api/users/${userId}`);
-        if (!res.ok) throw new Error('User not found');
-
-        profileModalUser = await res.json();
-        renderProfileContent();
-    } catch (err) {
-        console.error('Failed to load profile:', err);
-        content.innerHTML = '<div class="error-state">Failed to load profile</div>';
-    }
+// Navigate to profile page (new page-based approach)
+function showProfileModal(userId) {
+    navigateTo('/profile/' + userId);
 }
 
 function hideProfileModal() {
-    document.getElementById('profile-modal').classList.remove('visible');
-    profileModalUser = null;
-    isEditingProfile = false;
+    // Legacy compatibility - navigate back
+    goBack();
 }
+
+// Load profile page when it becomes visible
+async function loadProfilePage(userId) {
+    try {
+        const res = await fetch('/api/users/' + userId);
+        if (!res.ok) throw new Error('User not found');
+
+        currentProfileUser = await res.json();
+        renderProfilePage();
+        loadProfileUserDesigns(userId);
+        loadProfilePageBadges(userId);
+    } catch (err) {
+        console.error('Failed to load profile:', err);
+        showToast('Failed to load profile', 'error');
+    }
+}
+
+function renderProfilePage() {
+    var user = currentProfileUser;
+    if (!user) return;
+
+    var isOwnProfile = currentUser && currentUser.id === user.id;
+
+    // Avatar
+    var avatarEl = document.getElementById('profile-page-avatar');
+    if (avatarEl) avatarEl.src = user.avatar_url || '';
+
+    // Name
+    document.getElementById('profile-page-name').textContent = user.display_name || 'Unknown';
+
+    // Affiliation
+    var affiliationEl = document.getElementById('profile-page-affiliation');
+    if (user.affiliation) {
+        affiliationEl.textContent = user.affiliation;
+        affiliationEl.style.display = 'block';
+    } else {
+        affiliationEl.style.display = 'none';
+    }
+
+    // Location
+    var locationEl = document.getElementById('profile-page-location');
+    if (user.location) {
+        locationEl.textContent = user.location;
+        locationEl.style.display = 'block';
+    } else {
+        locationEl.style.display = 'none';
+    }
+
+    // Bio
+    var bioEl = document.getElementById('profile-page-bio');
+    if (user.bio) {
+        bioEl.textContent = user.bio;
+        bioEl.style.display = 'block';
+    } else {
+        bioEl.style.display = 'none';
+    }
+
+    // Stats
+    document.querySelector('#profile-page-followers .profile-stat-value').textContent = user.follower_count || 0;
+    document.querySelector('#profile-page-following .profile-stat-value').textContent = user.following_count || 0;
+    document.querySelector('#profile-page-designs .profile-stat-value').textContent = user.design_count || 0;
+
+    // Actions
+    var actionsEl = document.getElementById('profile-page-actions');
+    if (isOwnProfile) {
+        actionsEl.innerHTML = '<button class="btn btn-outline" onclick="showEditProfilePage()">Edit Profile</button>';
+    } else if (currentUser) {
+        var btnClass = user.is_following ? 'btn-outline' : 'btn-primary';
+        var btnText = user.is_following ? 'Following' : 'Follow';
+        actionsEl.innerHTML = '<button class="btn ' + btnClass + '" onclick="toggleFollowPage(\'' + user.id + '\')">' + btnText + '</button>';
+    } else {
+        actionsEl.innerHTML = '';
+    }
+}
+
+async function loadProfileUserDesigns(userId) {
+    var grid = document.getElementById('profile-page-designs-grid');
+    grid.innerHTML = '<div class="loading">Loading designs...</div>';
+
+    try {
+        var res = await fetch('/api/designs?author_id=' + userId + '&limit=12');
+        if (!res.ok) throw new Error('Failed to load designs');
+
+        var data = await res.json();
+        if (data.designs && data.designs.length > 0) {
+            grid.innerHTML = data.designs.map(function(design) {
+                return '<div class="profile-design-card" onclick="navigateTo(\'/community/' + design.id + '\')">' +
+                    '<div class="profile-design-name">' + escapeHtml(design.name) + '</div>' +
+                    '<div class="profile-design-meta">' +
+                        '<span>' + (design.sequence ? design.sequence.length : 0) + ' residues</span>' +
+                        '<span>' + (design.star_count || 0) + ' stars</span>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        } else {
+            grid.innerHTML = '<div class="empty-state">No designs yet</div>';
+        }
+    } catch (err) {
+        console.error('Failed to load user designs:', err);
+        grid.innerHTML = '<div class="error-state">Failed to load designs</div>';
+    }
+}
+
+async function loadProfilePageBadges(userId) {
+    var badgesEl = document.getElementById('profile-page-badges');
+    var sectionEl = document.getElementById('profile-page-badges-section');
+
+    try {
+        var res = await fetch('/api/reputation/badges/user/' + userId);
+        if (!res.ok) {
+            sectionEl.style.display = 'none';
+            return;
+        }
+
+        var data = await res.json();
+        if (data.badges && data.badges.length > 0) {
+            sectionEl.style.display = 'block';
+            badgesEl.innerHTML = data.badges.map(function(b) {
+                return '<div class="profile-badge-item">' +
+                    '<span class="profile-badge-icon">' + (b.badge.icon || '?') + '</span>' +
+                    '<span class="profile-badge-name">' + escapeHtml(b.badge.name) + '</span>' +
+                '</div>';
+            }).join('');
+        } else {
+            sectionEl.style.display = 'none';
+        }
+    } catch (err) {
+        console.error('Failed to load badges:', err);
+        sectionEl.style.display = 'none';
+    }
+}
+
+async function toggleFollowPage(userId) {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+
+    var isFollowing = currentProfileUser.is_following;
+
+    try {
+        var res = await fetch('/api/users/' + userId + '/follow', {
+            method: isFollowing ? 'DELETE' : 'POST'
+        });
+
+        if (res.ok) {
+            currentProfileUser.is_following = !isFollowing;
+            currentProfileUser.follower_count += isFollowing ? -1 : 1;
+            renderProfilePage();
+            showToast(isFollowing ? 'Unfollowed user' : 'Following user');
+        } else {
+            var data = await res.json();
+            showToast(data.detail || 'Failed to update follow status', 'error');
+        }
+    } catch (err) {
+        console.error('Failed to toggle follow:', err);
+        showToast('Failed to update follow status', 'error');
+    }
+}
+
+function showEditProfilePage() {
+    // For now, show a simple prompt-based edit
+    // In the future, this could be an inline form
+    showToast('Edit profile feature coming soon', 'info');
+}
+
+// Legacy modal compatibility
+var profileModalUser = null;
 
 function renderProfileContent() {
     const user = profileModalUser;
@@ -379,6 +531,18 @@ async function loadProfileReputation(userId) {
         console.error('Failed to load reputation:', err);
         reputationSection.innerHTML = '';
         badgesSection.innerHTML = '';
+    }
+}
+
+// Load all badges for a user
+async function loadBadges(userId) {
+    try {
+        const res = await fetch('/api/reputation/badges/user/' + userId);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (err) {
+        console.error('Failed to load badges:', err);
+        return null;
     }
 }
 

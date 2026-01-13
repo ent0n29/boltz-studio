@@ -274,6 +274,34 @@ async def cancel_job(
     return {"status": "cancelled"}
 
 
+@router.delete("/jobs/{job_id}")
+async def delete_job(
+    job_id: str,
+    user: RequiredUser,
+):
+    """Delete a design job and its results."""
+    runner = get_boltzgen_runner()
+    job = runner.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["user_id"] != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Don't allow deleting running jobs
+    running_statuses = ["queued", "generating", "folding", "analyzing", "filtering", "downloading_models"]
+    if job["status"] in running_statuses:
+        raise HTTPException(status_code=400, detail="Cannot delete a running job. Cancel it first.")
+
+    deleted = runner.delete_job(job_id)
+
+    if not deleted:
+        raise HTTPException(status_code=500, detail="Failed to delete job")
+
+    return {"status": "deleted"}
+
+
 # === Result Endpoints ===
 
 

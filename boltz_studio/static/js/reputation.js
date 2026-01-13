@@ -412,19 +412,7 @@ function formatNumber(num) {
     return num.toString();
 }
 
-/**
- * Format date for display.
- * @param {string|Date} date - Date to format
- * @returns {string} Formatted date
- */
-function formatDate(date) {
-    const d = new Date(date);
-    return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    });
-}
+// Note: formatDate is now in utils.js
 
 // Export functions for global access
 window.initReputation = initReputation;

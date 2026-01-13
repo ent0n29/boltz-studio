@@ -416,7 +416,7 @@ class DiscoveryStore:
             rows = conn.execute(
                 f"""
                 SELECT
-                    u.id, u.display_name, u.avatar_url,
+                    u.id, u.display_name, u.avatar_url, u.created_at,
                     us.total_stars_received, us.total_forks_received,
                     us.total_downloads, us.total_designs, us.reputation_score
                 FROM user_stats us
@@ -442,6 +442,7 @@ class DiscoveryStore:
                     id=row["id"],
                     display_name=row["display_name"],
                     avatar_url=row["avatar_url"],
+                    created_at=row["created_at"],
                 )
 
                 entry = LeaderboardEntry(

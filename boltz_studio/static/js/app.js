@@ -1,5 +1,188 @@
 // Boltz Studio - Frontend Application
 
+// ============================================
+// CLIENT-SIDE ROUTER
+// ============================================
+
+const Router = {
+    routes: {},
+    currentRoute: null,
+
+    // Register a route
+    on(path, handler) {
+        this.routes[path] = handler;
+    },
+
+    // Navigate to a path
+    navigate(path, params = {}) {
+        const hashPath = path.startsWith('#') ? path : '#' + path;
+        window.location.hash = hashPath;
+    },
+
+    // Parse current hash into path and params
+    parseHash() {
+        const hash = window.location.hash.slice(1) || '/';
+        const [path, queryString] = hash.split('?');
+        const params = {};
+
+        if (queryString) {
+            queryString.split('&').forEach(pair => {
+                const [key, value] = pair.split('=');
+                params[key] = decodeURIComponent(value);
+            });
+        }
+
+        return { path, params };
+    },
+
+    // Match path to route (supports :id params)
+    matchRoute(path) {
+        // Try exact match first
+        if (this.routes[path]) {
+            return { handler: this.routes[path], params: {} };
+        }
+
+        // Try parameterized routes
+        for (const routePath of Object.keys(this.routes)) {
+            const routeParts = routePath.split('/');
+            const pathParts = path.split('/');
+
+            if (routeParts.length !== pathParts.length) continue;
+
+            const params = {};
+            let match = true;
+
+            for (let i = 0; i < routeParts.length; i++) {
+                if (routeParts[i].startsWith(':')) {
+                    params[routeParts[i].slice(1)] = pathParts[i];
+                } else if (routeParts[i] !== pathParts[i]) {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) {
+                return { handler: this.routes[routePath], params };
+            }
+        }
+
+        return null;
+    },
+
+    // Handle route change
+    handleRoute() {
+        const { path, params } = this.parseHash();
+        const match = this.matchRoute(path);
+
+        if (match) {
+            this.currentRoute = path;
+            match.handler({ ...params, ...match.params });
+        } else {
+            // Default to predict tab
+            this.navigate('/');
+        }
+    },
+
+    // Initialize router
+    init() {
+        window.addEventListener('hashchange', () => this.handleRoute());
+
+        // Handle initial route
+        if (window.location.hash) {
+            this.handleRoute();
+        }
+    }
+};
+
+// Route handlers
+function routeToPredictTab() {
+    switchTab('predict', false);
+    hideAllPages();
+}
+
+function routeToDesignTab() {
+    switchTab('design', false);
+    hideAllPages();
+}
+
+function routeToCommunityTab() {
+    switchTab('community', false);
+    hideAllPages();
+}
+
+function routeToDesignResults(params) {
+    hideAllTabs();
+    showPage('results-page', params.id);
+}
+
+function routeToCommunityDesign(params) {
+    hideAllTabs();
+    showPage('design-detail-page', params.id);
+    // Load design data directly (don't rely on event which may not be set up yet)
+    if (params.id) {
+        loadDesignDetailPage(params.id);
+    }
+}
+
+function routeToLibrary() {
+    hideAllTabs();
+    showPage('library-page');
+}
+
+function routeToProfile(params) {
+    hideAllTabs();
+    showPage('profile-page', params.id);
+    // Load profile data directly (don't rely on event which may not be set up yet)
+    if (params.id && typeof loadProfilePage === 'function') {
+        loadProfilePage(params.id);
+    }
+}
+
+// Helper functions for routing
+function hideAllTabs() {
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+}
+
+function hideAllPages() {
+    document.querySelectorAll('.page-container').forEach(page => {
+        page.classList.remove('active');
+    });
+}
+
+function showPage(pageId, params) {
+    hideAllPages();
+    const page = document.getElementById(pageId);
+    if (page) {
+        page.classList.add('active');
+        // Trigger page-specific initialization
+        const event = new CustomEvent('pageshow', { detail: { params } });
+        page.dispatchEvent(event);
+    }
+}
+
+// Navigation helper
+function navigateTo(path) {
+    Router.navigate(path);
+}
+
+function goBack() {
+    window.history.back();
+}
+
+// Register routes
+Router.on('/', routeToPredictTab);
+Router.on('/design', routeToDesignTab);
+Router.on('/community', routeToCommunityTab);
+Router.on('/design/results/:id', routeToDesignResults);
+Router.on('/community/:id', routeToCommunityDesign);
+Router.on('/library', routeToLibrary);
+Router.on('/profile/:id', routeToProfile);
+
 let viewer = null;
 let currentJobId = null;
 let currentWebSocket = null;
@@ -69,41 +252,68 @@ function confirmAction() {
 }
 
 // Toast notification system
-function showToast(message, type = 'success', duration = 3000) {
-    const container = document.getElementById('toast-container');
+function showToast(message, type = 'success', duration = 3000, undoCallback = null) {
+    var container = document.getElementById('toast-container');
     if (!container) return;
 
-    const icons = {
-        success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-        </svg>`,
-        error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="15" y1="9" x2="9" y2="15"/>
-            <line x1="9" y1="9" x2="15" y2="15"/>
-        </svg>`,
-        info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>`
+    var icons = {
+        success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+        error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
     };
 
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerHTML = `
-        <div class="toast-icon">${icons[type] || icons.info}</div>
-        <div class="toast-message">${message}</div>
-    `;
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+
+    var undoButton = undoCallback ? '<button class="toast-undo-btn" onclick="event.stopPropagation();">Undo</button>' : '';
+
+    toast.innerHTML = '<div class="toast-icon">' + (icons[type] || icons.info) + '</div>' +
+        '<div class="toast-message">' + message + '</div>' +
+        undoButton;
 
     container.appendChild(toast);
 
+    // Handle undo button click
+    if (undoCallback) {
+        var undoBtn = toast.querySelector('.toast-undo-btn');
+        if (undoBtn) {
+            undoBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                undoCallback();
+                toast.classList.add('toast-out');
+                setTimeout(function() { toast.remove(); }, 200);
+            });
+        }
+    }
+
     // Auto remove after duration
-    setTimeout(() => {
+    var timeoutId = setTimeout(function() {
         toast.classList.add('toast-out');
-        setTimeout(() => toast.remove(), 200);
-    }, duration);
+        setTimeout(function() { toast.remove(); }, 200);
+    }, undoCallback ? 5000 : duration); // Longer duration for undo toasts
+
+    return { toast: toast, cancel: function() { clearTimeout(timeoutId); toast.remove(); } };
+}
+
+// Toast with undo for destructive actions
+function showToastWithUndo(message, actionCallback, undoCallback) {
+    var executed = false;
+
+    // Show toast with undo option
+    showToast(message, 'info', 5000, function() {
+        if (!executed) {
+            executed = true;
+            undoCallback();
+        }
+    });
+
+    // Execute the action after a short delay to allow undo
+    setTimeout(function() {
+        if (!executed) {
+            executed = true;
+            actionCallback();
+        }
+    }, 100);
 }
 
 // DOM Elements
@@ -112,13 +322,23 @@ const seqLengthEl = document.getElementById('seq-length');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Tab switching
+    // Initialize router
+    Router.init();
+
+    // Tab switching - use router for navigation
     document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tabName = tab.dataset.tab;
+            const path = tabName === 'predict' ? '/' : `/${tabName}`;
+            navigateTo(path);
+        });
     });
 
-    // Restore active tab from previous session
-    restoreActiveTab();
+    // Restore active tab from URL hash or default
+    if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+        restoreActiveTab();
+    }
 
     // Sequence input handling
     sequenceInput.addEventListener('input', handleSequenceInput);
@@ -161,6 +381,9 @@ function handleSequenceInput(e) {
 
 // Tab switching
 function switchTab(tabName, updateUrl = true) {
+    // Hide all pages first
+    hideAllPages();
+
     document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
@@ -171,10 +394,10 @@ function switchTab(tabName, updateUrl = true) {
     // Save active tab to localStorage
     localStorage.setItem('boltz-active-tab', tabName);
 
-    // Update URL
+    // Update URL hash (router uses hash-based routing)
     if (updateUrl) {
-        const url = tabName === 'predict' ? '/' : `/${tabName}`;
-        history.pushState({ tab: tabName }, '', url);
+        const path = tabName === 'predict' ? '/' : `/${tabName}`;
+        window.location.hash = path;
     }
 
     if (tabName === 'community') {
@@ -725,82 +948,261 @@ function downloadFasta() {
 }
 
 // ============================================
-// SAVE LOCAL MODAL
+// INLINE SAVE PANEL
 // ============================================
 
-function showSaveLocalModal() {
+function toggleInlineSave() {
     if (!window.currentPdbData) {
-        showError('No structure to save. Run a prediction first.');
+        showToast('No structure to save. Run a prediction first.', 'error');
         return;
     }
 
-    // Pre-fill with default name
-    const nameInput = document.getElementById('save-local-name');
-    if (nameInput && !nameInput.value) {
-        nameInput.value = `Design ${new Date().toLocaleTimeString()}`;
+    const panel = document.getElementById('inline-save-panel');
+    const isVisible = panel.style.display !== 'none';
+
+    // Hide other panels
+    hideInlinePublish();
+
+    if (isVisible) {
+        hideInlineSave();
+    } else {
+        // Pre-fill name
+        const nameInput = document.getElementById('inline-save-name');
+        if (nameInput && !nameInput.value) {
+            nameInput.value = 'Design ' + new Date().toLocaleTimeString();
+        }
+        panel.style.display = 'block';
     }
-
-    document.getElementById('save-local-modal').classList.add('visible');
 }
 
-function hideSaveLocalModal() {
-    document.getElementById('save-local-modal').classList.remove('visible');
+function hideInlineSave() {
+    document.getElementById('inline-save-panel').style.display = 'none';
 }
 
-function saveDesignLocally() {
-    const name = document.getElementById('save-local-name').value.trim();
-    const notes = document.getElementById('save-local-notes').value.trim();
-    const tags = document.getElementById('save-local-tags').value.split(',').map(t => t.trim()).filter(t => t);
+function saveDesignInline() {
+    const name = document.getElementById('inline-save-name').value.trim();
+    const notes = document.getElementById('inline-save-notes').value.trim();
+    const tags = document.getElementById('inline-save-tags').value.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; });
 
     if (!name) {
-        showError('Please enter a name');
+        showToast('Please enter a name', 'error');
         return;
     }
 
-    const design = {
+    var design = {
         id: Date.now().toString(),
-        name,
-        notes,
-        tags,
+        name: name,
+        notes: notes,
+        tags: tags,
         sequence: window.currentSequence,
         pdb_data: window.currentPdbData,
-        plddt: window.currentConfidence?.complex_plddt,
-        ptm: window.currentConfidence?.ptm,
-        confidence: window.currentConfidence?.confidence_score,
+        plddt: window.currentConfidence ? window.currentConfidence.complex_plddt : null,
+        ptm: window.currentConfidence ? window.currentConfidence.ptm : null,
+        confidence: window.currentConfidence ? window.currentConfidence.confidence_score : null,
         plddt_per_residue: window.plddt,
         smiles: getLigandSmiles(),
-        mutations: Object.keys(mutations).length > 0 ? { ...mutations } : null,
+        mutations: Object.keys(mutations).length > 0 ? Object.assign({}, mutations) : null,
         created_at: new Date().toISOString()
     };
 
     // Save to localStorage
-    const designs = getLocalDesigns();
+    var designs = getLocalDesigns();
     designs.unshift(design);
-    if (designs.length > 50) designs.pop(); // Limit to 50 designs
+    if (designs.length > 50) designs.pop();
     localStorage.setItem('boltz_designs', JSON.stringify(designs));
 
-    hideSaveLocalModal();
+    hideInlineSave();
 
     // Clear form
-    document.getElementById('save-local-name').value = '';
-    document.getElementById('save-local-notes').value = '';
-    document.getElementById('save-local-tags').value = '';
+    document.getElementById('inline-save-name').value = '';
+    document.getElementById('inline-save-notes').value = '';
+    document.getElementById('inline-save-tags').value = '';
 
-    // Refresh library if open
+    showToast('Design saved to library!');
     loadLibraryDesigns();
 }
 
+// Legacy modal functions (kept for backwards compatibility)
+function showSaveLocalModal() {
+    toggleInlineSave();
+}
+
+function hideSaveLocalModal() {
+    hideInlineSave();
+}
+
 // ============================================
-// LIBRARY MODAL
+// INLINE PUBLISH PANEL
+// ============================================
+
+function toggleInlinePublish() {
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+
+    if (!window.currentPdbData) {
+        showToast('No structure to publish. Run a prediction first.', 'error');
+        return;
+    }
+
+    const panel = document.getElementById('inline-publish-panel');
+    const isVisible = panel.style.display !== 'none';
+
+    // Hide other panels
+    hideInlineSave();
+
+    if (isVisible) {
+        hideInlinePublish();
+    } else {
+        // Pre-fill name
+        const nameInput = document.getElementById('inline-publish-name');
+        if (nameInput && !nameInput.value) {
+            nameInput.value = 'Design ' + new Date().toLocaleTimeString();
+        }
+        panel.style.display = 'block';
+    }
+}
+
+function hideInlinePublish() {
+    document.getElementById('inline-publish-panel').style.display = 'none';
+}
+
+async function publishDesignInline() {
+    const name = document.getElementById('inline-publish-name').value.trim();
+    const description = document.getElementById('inline-publish-description').value.trim();
+    const tagsInput = document.getElementById('inline-publish-tags').value.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; });
+    const isPublic = document.getElementById('inline-publish-public').checked;
+
+    if (!name) {
+        showToast('Please enter a name', 'error');
+        return;
+    }
+
+    // Format tags
+    const tags = tagsInput.map(function(t) { return { tag: t, tag_type: 'purpose' }; });
+
+    // Capture preview image
+    const previewImage = capturePreviewImage();
+
+    try {
+        const res = await fetch('/api/designs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                description: description || null,
+                tags: tags,
+                is_public: isPublic,
+                sequence: window.currentSequence,
+                structure_pdb: window.currentPdbData,
+                preview_image: previewImage,
+                confidence_score: window.currentConfidence ? window.currentConfidence.confidence_score : null,
+                complex_plddt: window.currentConfidence && window.currentConfidence.complex_plddt ? window.currentConfidence.complex_plddt * 100 : null,
+                ptm: window.currentConfidence ? window.currentConfidence.ptm : null,
+                plddt_per_residue: window.plddt || null
+            })
+        });
+
+        if (res.ok) {
+            hideInlinePublish();
+            // Clear form
+            document.getElementById('inline-publish-name').value = '';
+            document.getElementById('inline-publish-description').value = '';
+            document.getElementById('inline-publish-tags').value = '';
+            showToast('Design published to community!');
+        } else {
+            const data = await res.json();
+            showToast(data.detail || 'Failed to publish design', 'error');
+        }
+    } catch (err) {
+        console.error('Failed to publish design:', err);
+        showToast('Failed to publish design', 'error');
+    }
+}
+
+// Legacy modal functions (kept for backwards compatibility)
+function showPublishModal() {
+    toggleInlinePublish();
+}
+
+function hidePublishModal() {
+    hideInlinePublish();
+}
+
+// ============================================
+// INLINE PDB SEARCH
+// ============================================
+
+function toggleInlinePdb() {
+    const panel = document.getElementById('inline-pdb-panel');
+    const isVisible = panel.style.display !== 'none';
+
+    if (isVisible) {
+        hideInlinePdb();
+    } else {
+        panel.style.display = 'block';
+    }
+}
+
+function hideInlinePdb() {
+    document.getElementById('inline-pdb-panel').style.display = 'none';
+}
+
+async function loadPdbInline() {
+    const pdbId = document.getElementById('inline-pdb-id').value.trim().toUpperCase();
+    if (!pdbId || pdbId.length !== 4) {
+        showToast('Please enter a valid 4-character PDB ID', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/pdb/' + pdbId + '/structure');
+        if (!res.ok) throw new Error('PDB not found');
+
+        const data = await res.json();
+
+        // Load into viewer
+        window.currentPdbData = data.pdb_data;
+        showStructure(data.pdb_data);
+
+        // Extract sequence if available
+        if (data.sequence) {
+            sequenceInput.value = data.sequence;
+            seqLengthEl.textContent = data.sequence.length;
+            originalSequence = data.sequence;
+            buildSequenceEditor(data.sequence);
+        }
+
+        hideInlinePdb();
+        document.getElementById('inline-pdb-id').value = '';
+        showViewerActions();
+        showToast('Loaded structure from PDB: ' + pdbId);
+    } catch (err) {
+        showToast('Failed to load PDB: ' + err.message, 'error');
+    }
+}
+
+// Legacy modal functions (kept for backwards compatibility)
+function showPdbModal() {
+    toggleInlinePdb();
+}
+
+function hidePdbModal() {
+    hideInlinePdb();
+}
+
+// ============================================
+// LIBRARY FUNCTIONS
 // ============================================
 
 function showLibraryModal() {
-    loadLibraryDesigns();
-    document.getElementById('library-modal').classList.add('visible');
+    // Redirect to library page
+    navigateTo('/library');
 }
 
 function hideLibraryModal() {
-    document.getElementById('library-modal').classList.remove('visible');
+    // No-op - library is now a page, navigation handles this
 }
 
 function getLocalDesigns() {
@@ -812,128 +1214,11 @@ function getLocalDesigns() {
 }
 
 function loadLibraryDesigns() {
-    const designs = getLocalDesigns();
-    const grid = document.getElementById('library-grid');
-    const empty = document.getElementById('library-empty');
-
-    if (!grid) return;
-
-    grid.innerHTML = '';
-
-    if (designs.length === 0) {
-        if (empty) empty.style.display = 'flex';
-        return;
+    // Refresh the page-based library if it's visible
+    const libraryPage = document.getElementById('library-page');
+    if (libraryPage && libraryPage.classList.contains('active')) {
+        loadLibraryPage();
     }
-
-    if (empty) empty.style.display = 'none';
-
-    designs.forEach((design, index) => {
-        const card = createLibraryCard(design, index);
-        grid.appendChild(card);
-    });
-}
-
-function createLibraryCard(design, index) {
-    const card = document.createElement('div');
-    card.className = 'library-card';
-
-    const plddt = design.plddt ? (design.plddt * 100).toFixed(0) + '%' : '-';
-    const date = new Date(design.created_at).toLocaleDateString();
-
-    card.innerHTML = `
-        <div class="library-card-preview">
-            <div class="library-card-viewer" id="library-viewer-${index}"></div>
-        </div>
-        <div class="library-card-info">
-            <div class="library-card-name">${escapeHtml(design.name)}</div>
-            <div class="library-card-meta">${design.sequence?.length || 0} res | ${plddt} | ${date}</div>
-            <div class="library-card-actions">
-                <button onclick="loadDesignFromLibrary(${index})">Load</button>
-                <button class="delete" onclick="deleteFromLibrary(${index})">Delete</button>
-            </div>
-        </div>
-    `;
-
-    // Load mini 3D viewer
-    setTimeout(() => {
-        const container = document.getElementById(`library-viewer-${index}`);
-        if (container && design.pdb_data) {
-            try {
-                const miniViewer = $3Dmol.createViewer(container, {
-                    backgroundColor: '#c8e6df',
-                    antialias: true
-                });
-                miniViewer.addModel(design.pdb_data, 'pdb');
-                miniViewer.setStyle({}, { cartoon: { color: '#0d9373' } });
-                miniViewer.zoomTo();
-                miniViewer.render();
-            } catch (e) {
-                console.error('Failed to load mini viewer:', e);
-            }
-        }
-    }, 100);
-
-    return card;
-}
-
-function loadDesignFromLibrary(index) {
-    const designs = getLocalDesigns();
-    const design = designs[index];
-    if (!design) return;
-
-    // Load sequence
-    sequenceInput.value = design.sequence;
-    seqLengthEl.textContent = design.sequence.length;
-    originalSequence = design.sequence;
-
-    // Load mutations if present
-    mutations = design.mutations || {};
-    buildSequenceEditor(design.sequence);
-
-    // Load ligand if present
-    if (design.smiles) {
-        const smilesInput = document.getElementById('smiles-input');
-        if (smilesInput) smilesInput.value = design.smiles;
-        document.getElementById('ligand-section')?.classList.add('expanded');
-    }
-
-    // Load structure if available
-    if (design.pdb_data) {
-        window.currentPdbData = design.pdb_data;
-        window.currentSequence = design.sequence;
-        window.currentConfidence = {
-            confidence_score: design.confidence,
-            complex_plddt: design.plddt,
-            ptm: design.ptm
-        };
-        plddt = design.plddt_per_residue || [];
-        window.plddt = plddt;
-
-        showStructure(design.pdb_data);
-        updateMetrics(window.currentConfidence);
-        showViewerActions();
-    }
-
-    hideLibraryModal();
-}
-
-async function deleteFromLibrary(index) {
-    const designs = getLocalDesigns();
-    const design = designs[index];
-    const name = design?.name || 'this design';
-
-    const confirmed = await showConfirm(
-        'Delete Design',
-        `Are you sure you want to delete "${name}"? This cannot be undone.`,
-        'Delete'
-    );
-
-    if (!confirmed) return;
-
-    designs.splice(index, 1);
-    localStorage.setItem('boltz_designs', JSON.stringify(designs));
-    loadLibraryDesigns();
-    showToast('Design deleted');
 }
 
 // ============================================
@@ -968,127 +1253,6 @@ function capturePreviewImage() {
     }
 }
 
-function showPublishModal() {
-    if (!currentUser) {
-        showLoginModal();
-        return;
-    }
-
-    if (!window.currentPdbData) {
-        showError('No structure to publish. Run a prediction first.');
-        return;
-    }
-
-    // Pre-fill with design name if available
-    const nameInput = document.getElementById('publish-name');
-    if (nameInput && !nameInput.value) {
-        nameInput.value = `Design ${new Date().toLocaleTimeString()}`;
-    }
-
-    document.getElementById('publish-modal').classList.add('visible');
-}
-
-function hidePublishModal() {
-    document.getElementById('publish-modal').classList.remove('visible');
-}
-
-async function publishDesign() {
-    const name = document.getElementById('publish-name').value.trim();
-    const description = document.getElementById('publish-description').value.trim();
-    const tagsInput = document.getElementById('publish-tags').value.split(',').map(t => t.trim()).filter(t => t);
-    const isPublic = document.getElementById('publish-public').checked;
-
-    if (!name) {
-        showError('Please enter a name');
-        return;
-    }
-
-    // Format tags with default type 'purpose'
-    const tags = tagsInput.map(t => ({ tag: t, tag_type: 'purpose' }));
-
-    // Capture preview image from current viewer
-    const previewImage = capturePreviewImage();
-
-    try {
-        const res = await fetch('/api/designs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name,
-                description: description || null,
-                tags,
-                is_public: isPublic,
-                sequence: window.currentSequence,
-                structure_pdb: window.currentPdbData,
-                preview_image: previewImage,
-                confidence_score: window.currentConfidence?.confidence_score,
-                complex_plddt: window.currentConfidence?.complex_plddt ? window.currentConfidence.complex_plddt * 100 : null,
-                ptm: window.currentConfidence?.ptm,
-                plddt_per_residue: window.plddt || null
-            })
-        });
-
-        if (res.ok) {
-            hidePublishModal();
-            // Clear form
-            document.getElementById('publish-name').value = '';
-            document.getElementById('publish-description').value = '';
-            document.getElementById('publish-tags').value = '';
-            showToast('Design published to community!');
-        } else {
-            const data = await res.json();
-            showError(data.detail || 'Failed to publish design');
-        }
-    } catch (err) {
-        console.error('Failed to publish design:', err);
-        showError('Failed to publish design');
-    }
-}
-
-// ============================================
-// PDB MODAL
-// ============================================
-
-function showPdbModal() {
-    document.getElementById('pdb-modal').classList.add('visible');
-}
-
-function hidePdbModal() {
-    document.getElementById('pdb-modal').classList.remove('visible');
-}
-
-async function loadPdbById() {
-    const pdbId = document.getElementById('pdb-id-input').value.trim().toUpperCase();
-    if (!pdbId || pdbId.length !== 4) {
-        showError('Please enter a valid 4-character PDB ID');
-        return;
-    }
-
-    try {
-        const res = await fetch(`/api/pdb/${pdbId}/structure`);
-        if (!res.ok) throw new Error('PDB not found');
-
-        const data = await res.json();
-
-        // Load into viewer
-        window.currentPdbData = data.pdb_data;
-        showStructure(data.pdb_data);
-
-        // Extract sequence if available
-        if (data.sequence) {
-            sequenceInput.value = data.sequence;
-            seqLengthEl.textContent = data.sequence.length;
-            originalSequence = data.sequence;
-            buildSequenceEditor(data.sequence);
-        }
-
-        hidePdbModal();
-        showViewerActions();
-    } catch (err) {
-        showError(`Failed to load PDB: ${err.message}`);
-    }
-}
-
 // ============================================
 // UI HELPERS
 // ============================================
@@ -1120,12 +1284,6 @@ function showError(msg) {
 
 function hideError() {
     document.getElementById('error').style.display = 'none';
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // ============================================
@@ -1261,7 +1419,7 @@ document.addEventListener('keydown', (e) => {
         // Ctrl+Enter to predict while in sequence input
         if (e.ctrlKey && e.key === 'Enter' && e.target.id === 'sequence') {
             e.preventDefault();
-            submitPrediction();
+            predict();
         }
         return;
     }
@@ -1277,7 +1435,7 @@ document.addEventListener('keydown', (e) => {
                 break;
             case 'p':
                 e.preventDefault();
-                submitPrediction();
+                predict();
                 break;
             case 'd':
                 e.preventDefault();
@@ -1287,7 +1445,7 @@ document.addEventListener('keydown', (e) => {
                 break;
             case 'l':
                 e.preventDefault();
-                showLibraryModal();
+                navigateTo('/library');
                 break;
         }
     }
@@ -1300,6 +1458,14 @@ document.addEventListener('keydown', (e) => {
                 modal.classList.remove('visible');
             });
             hideMutationPicker();
+            // Close inline panels
+            hideInlineSave();
+            hideInlinePublish();
+            hideInlinePdb();
+            // Close custom target upload
+            if (typeof hideCustomTargetUpload === 'function') {
+                hideCustomTargetUpload();
+            }
             break;
         case '1':
             if (!e.ctrlKey && !e.metaKey) switchTab('predict');
@@ -1369,3 +1535,414 @@ function forkDesignLocally(parentId) {
     hideLibraryModal();
     switchTab('predict');
 }
+
+// ============================================
+// LIBRARY PAGE (Full Page View)
+// ============================================
+
+let libraryPageDesigns = [];
+
+// Initialize library page when it becomes visible
+document.addEventListener('DOMContentLoaded', () => {
+    const libraryPage = document.getElementById('library-page');
+    if (libraryPage) {
+        libraryPage.addEventListener('pageshow', loadLibraryPage);
+    }
+
+    // Search functionality
+    const searchInput = document.getElementById('library-page-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(filterLibraryPage, 300));
+    }
+
+    // Filter functionality
+    const filterSelect = document.getElementById('library-page-filter');
+    if (filterSelect) {
+        filterSelect.addEventListener('change', filterLibraryPage);
+    }
+});
+
+async function loadLibraryPage() {
+    // Load from localStorage first
+    libraryPageDesigns = JSON.parse(localStorage.getItem('boltz_designs') || '[]');
+
+    // Also try to load from API if user is logged in
+    if (window.currentUser) {
+        try {
+            const response = await fetch('/api/designs/my', { credentials: 'include' });
+            if (response.ok) {
+                const data = await response.json();
+                // Merge with local designs
+                data.designs.forEach(d => {
+                    if (!libraryPageDesigns.find(ld => ld.id === d.id)) {
+                        libraryPageDesigns.push(d);
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error loading designs from API:', error);
+        }
+    }
+
+    renderLibraryPage();
+}
+
+function filterLibraryPage() {
+    renderLibraryPage();
+}
+
+function renderLibraryPage() {
+    const grid = document.getElementById('library-page-grid');
+    const empty = document.getElementById('library-page-empty');
+    const searchQuery = document.getElementById('library-page-search')?.value?.toLowerCase() || '';
+    const filter = document.getElementById('library-page-filter')?.value || 'all';
+
+    let filtered = [...libraryPageDesigns];
+
+    // Apply search filter
+    if (searchQuery) {
+        filtered = filtered.filter(d =>
+            d.name?.toLowerCase().includes(searchQuery) ||
+            d.notes?.toLowerCase().includes(searchQuery) ||
+            d.tags?.some(t => {
+                const tagStr = typeof t === 'string' ? t : (t.tag || '');
+                return tagStr.toLowerCase().includes(searchQuery);
+            })
+        );
+    }
+
+    // Apply type filter
+    if (filter === 'predictions') {
+        filtered = filtered.filter(d => d.type === 'prediction');
+    } else if (filter === 'binders') {
+        filtered = filtered.filter(d => d.type === 'binder');
+    } else if (filter === 'published') {
+        filtered = filtered.filter(d => d.is_published);
+    }
+
+    // Sort by date (newest first)
+    filtered.sort((a, b) => new Date(b.savedAt || b.created_at) - new Date(a.savedAt || a.created_at));
+
+    if (filtered.length === 0) {
+        grid.innerHTML = '';
+        empty.style.display = 'flex';
+        return;
+    }
+
+    empty.style.display = 'none';
+    grid.innerHTML = filtered.map(design => {
+        const name = design.name || 'Unnamed Design';
+        const residues = design.sequence?.length || 0;
+        const timeAgo = formatTimeAgo(design.savedAt || design.created_at);
+        return '<div class="library-design-card" onclick="loadLibraryDesign(\'' + design.id + '\')">' +
+            '<div class="library-card-preview">' +
+                '<div class="viewer-placeholder">' +
+                    '<svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1">' +
+                        '<path d="M12 2L2 7l10 5 10-5-10-5z"/>' +
+                        '<path d="M2 17l10 5 10-5"/>' +
+                        '<path d="M2 12l10 5 10-5"/>' +
+                    '</svg>' +
+                '</div>' +
+            '</div>' +
+            '<div class="library-card-body">' +
+                '<div class="library-card-name">' + name + '</div>' +
+                '<div class="library-card-meta">' +
+                    '<span>' + residues + ' residues</span>' +
+                    '<span>' + timeAgo + '</span>' +
+                '</div>' +
+                '<div class="library-card-actions">' +
+                    '<button class="btn btn-outline" onclick="event.stopPropagation(); loadLibraryDesign(\'' + design.id + '\')">Load</button>' +
+                    '<button class="btn btn-outline" onclick="event.stopPropagation(); deleteLibraryDesign(\'' + design.id + '\')">Delete</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
+
+function loadLibraryDesign(designId) {
+    const design = libraryPageDesigns.find(d => d.id === designId);
+    if (!design) return;
+
+    // Load into editor
+    sequenceInput.value = design.sequence;
+    seqLengthEl.textContent = design.sequence.length;
+    originalSequence = design.sequence;
+    buildSequenceEditor(design.sequence);
+
+    // Navigate to predict tab
+    navigateTo('/');
+    showToast('Loaded: ' + (design.name || 'Design'), 'success');
+}
+
+function deleteLibraryDesign(designId) {
+    if (!confirm('Delete this design?')) return;
+
+    libraryPageDesigns = libraryPageDesigns.filter(d => d.id !== designId);
+    localStorage.setItem('boltz_designs', JSON.stringify(libraryPageDesigns));
+    renderLibraryPage();
+    showToast('Design deleted', 'success');
+}
+
+// ============================================
+// COMMUNITY DESIGN DETAIL PAGE
+// ============================================
+
+let currentDetailDesign = null;
+let detailViewer = null;
+
+// Initialize design detail page when it becomes visible
+document.addEventListener('DOMContentLoaded', () => {
+    const detailPage = document.getElementById('design-detail-page');
+    if (detailPage) {
+        detailPage.addEventListener('pageshow', async (e) => {
+            const designId = e.detail?.params;
+            if (designId) {
+                await loadDesignDetailPage(designId);
+            }
+        });
+    }
+
+    // Initialize profile page when it becomes visible
+    const profilePage = document.getElementById('profile-page');
+    if (profilePage) {
+        profilePage.addEventListener('pageshow', async (e) => {
+            const userId = e.detail?.params;
+            if (userId && typeof loadProfilePage === 'function') {
+                await loadProfilePage(userId);
+            }
+        });
+    }
+});
+
+async function loadDesignDetailPage(designId) {
+    try {
+        const response = await fetch('/api/designs/' + designId);
+        if (!response.ok) throw new Error('Failed to load design');
+
+        currentDetailDesign = await response.json();
+        renderDesignDetailPage();
+
+        // Load comments
+        loadDetailComments();
+    } catch (error) {
+        console.error('Error loading design:', error);
+        showToast('Failed to load design', 'error');
+    }
+}
+
+function renderDesignDetailPage() {
+    const design = currentDetailDesign;
+    if (!design) return;
+
+    document.getElementById('design-detail-title').textContent = design.name || 'Unnamed Design';
+    document.getElementById('design-detail-author-link').textContent = design.author?.display_name || 'Unknown';
+    document.getElementById('design-detail-author-link').href = '#/profile/' + (design.author?.id || '');
+    document.getElementById('design-detail-date').textContent = formatDate(design.created_at);
+    document.getElementById('design-detail-description').textContent = design.description || 'No description provided.';
+
+    // Tags - tags are objects with { tag, tag_type } structure
+    const tagsContainer = document.getElementById('design-detail-tags');
+    tagsContainer.innerHTML = (design.tags || []).map(function(t) {
+        const tagName = typeof t === 'string' ? t : (t.tag || '');
+        if (!tagName) return '';
+        return '<span class="tag">' + escapeHtml(tagName) + '</span>';
+    }).filter(Boolean).join('');
+
+    // Stats
+    document.getElementById('design-detail-stars').textContent = design.star_count || 0;
+    document.getElementById('design-detail-forks').textContent = design.fork_count || 0;
+    document.getElementById('design-detail-downloads').textContent = design.download_count || 0;
+    document.getElementById('design-detail-views').textContent = design.view_count || 0;
+
+    // Metrics
+    document.getElementById('design-detail-plddt').textContent = design.complex_plddt ? design.complex_plddt.toFixed(1) : '-';
+    document.getElementById('design-detail-ptm').textContent = design.ptm ? design.ptm.toFixed(2) : '-';
+
+    // Star button
+    const starBtn = document.getElementById('design-detail-star-btn');
+    if (design.is_starred) {
+        starBtn.classList.add('starred');
+    } else {
+        starBtn.classList.remove('starred');
+    }
+    document.getElementById('design-detail-star-count').textContent = design.star_count || 0;
+
+    // Comment form (show if logged in)
+    const commentForm = document.getElementById('design-detail-comment-form');
+    if (window.currentUser) {
+        commentForm.style.display = 'block';
+    }
+
+    // Load 3D structure
+    loadDetailStructure(design);
+}
+
+async function loadDetailStructure(design) {
+    const viewerDiv = document.getElementById('design-detail-viewer-3d');
+
+    // Get theme-appropriate background color
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const bgColor = isDark ? '#0d3d38' : '#f0fdfa';
+
+    // Always recreate viewer to handle theme changes and container resize
+    if (detailViewer) {
+        detailViewer.clear();
+    }
+    detailViewer = $3Dmol.createViewer(viewerDiv, {
+        backgroundColor: bgColor
+    });
+
+    if (design.structure_pdb) {
+        console.log('Loading structure, PDB length:', design.structure_pdb.length);
+        detailViewer.addModel(design.structure_pdb, 'pdb');
+        detailViewer.setStyle({}, {
+            cartoon: {
+                colorfunc: function(atom) {
+                    var b = atom.b;
+                    if (b > 90) return '#0053D6';
+                    if (b > 70) return '#65CBF3';
+                    if (b > 50) return '#FFDB13';
+                    return '#FF7D45';
+                }
+            }
+        });
+        detailViewer.zoomTo();
+        detailViewer.render();
+
+        // Resize after a brief delay to ensure container is fully rendered
+        setTimeout(function() {
+            detailViewer.resize();
+            detailViewer.render();
+        }, 100);
+    } else {
+        console.warn('No structure_pdb data for design:', design.id);
+    }
+}
+
+async function loadDetailComments() {
+    if (!currentDetailDesign) return;
+
+    try {
+        const response = await fetch('/api/designs/' + currentDetailDesign.id + '/comments');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        // API returns { comments: [...], total, offset, limit }
+        const comments = data.comments || [];
+        document.getElementById('design-detail-comments-count').textContent = data.total || comments.length;
+
+        const list = document.getElementById('design-detail-comments-list');
+        if (comments.length === 0) {
+            list.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-tertiary);">No comments yet</div>';
+            return;
+        }
+
+        list.innerHTML = comments.map(function(comment) {
+            // API uses 'author' not 'user'
+            var avatar = comment.author?.avatar_url || '/img/default-avatar.png';
+            var authorName = comment.author?.display_name || 'Anonymous';
+            var timeAgo = formatTimeAgo(comment.created_at);
+            var content = escapeHtml(comment.content);
+            return '<div class="comment-item">' +
+                '<div class="comment-item-header">' +
+                    '<img class="comment-item-avatar" src="' + avatar + '" alt="">' +
+                    '<span class="comment-item-author">' + authorName + '</span>' +
+                    '<span class="comment-item-date">' + timeAgo + '</span>' +
+                '</div>' +
+                '<div class="comment-item-content">' + content + '</div>' +
+            '</div>';
+        }).join('');
+    } catch (error) {
+        console.error('Error loading comments:', error);
+    }
+}
+
+async function submitDetailComment() {
+    if (!currentDetailDesign || !window.currentUser) return;
+
+    const textarea = document.getElementById('design-detail-comment-text');
+    const content = textarea.value.trim();
+    if (!content) return;
+
+    try {
+        const response = await fetch('/api/designs/' + currentDetailDesign.id + '/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ content: content })
+        });
+
+        if (!response.ok) throw new Error('Failed to post comment');
+
+        textarea.value = '';
+        showToast('Comment posted!', 'success');
+        loadDetailComments();
+    } catch (error) {
+        console.error('Error posting comment:', error);
+        showToast('Failed to post comment', 'error');
+    }
+}
+
+async function toggleDetailStar() {
+    if (!currentDetailDesign || !window.currentUser) {
+        showLoginModal();
+        return;
+    }
+
+    try {
+        // Use DELETE to unstar, POST to star
+        const isCurrentlyStarred = currentDetailDesign.is_starred;
+        const response = await fetch('/api/designs/' + currentDetailDesign.id + '/star', {
+            method: isCurrentlyStarred ? 'DELETE' : 'POST',
+            credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error('Failed to toggle star');
+
+        const data = await response.json();
+        currentDetailDesign.is_starred = data.starred;
+        currentDetailDesign.star_count = data.star_count;
+
+        const starBtn = document.getElementById('design-detail-star-btn');
+        if (data.starred) {
+            starBtn.classList.add('starred');
+        } else {
+            starBtn.classList.remove('starred');
+        }
+        document.getElementById('design-detail-star-count').textContent = data.star_count;
+        document.getElementById('design-detail-stars').textContent = data.star_count;
+    } catch (error) {
+        console.error('Error toggling star:', error);
+    }
+}
+
+function forkDetailDesign() {
+    if (!currentDetailDesign) return;
+
+    // Load design into editor
+    sequenceInput.value = currentDetailDesign.sequence || '';
+    handleSequenceInput({ target: sequenceInput });
+
+    navigateTo('/');
+    showToast('Design forked! Make your changes and save.', 'success');
+}
+
+function downloadDetailPdb() {
+    if (!currentDetailDesign?.pdb_data) {
+        showToast('No structure available', 'error');
+        return;
+    }
+
+    const blob = new Blob([currentDetailDesign.pdb_data], { type: 'chemical/x-pdb' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (currentDetailDesign.name || 'design') + '.pdb';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Note: Utility functions (debounce, formatDate, formatTimeAgo, escapeHtml)
+// are now in utils.js

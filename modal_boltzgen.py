@@ -30,6 +30,7 @@ def run_design(
     """Run BoltzGen on Modal GPU."""
     import subprocess
     import tempfile
+    import json
     from pathlib import Path
     import urllib.request
 
@@ -37,6 +38,7 @@ def run_design(
     import gemmi
 
     work_dir = Path(tempfile.mkdtemp())
+    print(f"Working directory: {work_dir}")
 
     # If PDB ID provided, download CIF directly from RCSB (most reliable)
     if pdb_id:
@@ -154,11 +156,40 @@ def run_design(
     print(f"Running: {' '.join(cmd)}")
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(work_dir))
-    print(f"stdout: {result.stdout}")
-    print(f"stderr: {result.stderr}")
+
+    # Enhanced logging
+    print("=" * 60)
+    print("BOLTZGEN OUTPUT:")
+    print("=" * 60)
+    print(f"Return code: {result.returncode}")
+    print(f"STDOUT:\n{result.stdout}")
+    if result.stderr:
+        print(f"STDERR:\n{result.stderr}")
+    print("=" * 60)
+
+    # List output directory contents for debugging
+    print("Output directory contents:")
+    for p in output_dir.rglob("*"):
+        if p.is_file():
+            print(f"  {p.relative_to(output_dir)} ({p.stat().st_size} bytes)")
 
     if result.returncode != 0:
-        return {"success": False, "error": result.stderr or result.stdout, "results": []}
+        # Try to identify which step failed
+        error_msg = result.stderr or result.stdout
+        step = "unknown"
+        if "design" in error_msg.lower():
+            step = "design"
+        elif "inverse_folding" in error_msg.lower() or "folding" in error_msg.lower():
+            step = "inverse_folding"
+        elif "filter" in error_msg.lower():
+            step = "filtering"
+
+        return {
+            "success": False,
+            "error": error_msg,
+            "failed_step": step,
+            "results": []
+        }
 
     # Parse results - look for filtered or output PDB files
     results = []
@@ -169,36 +200,93 @@ def run_design(
         'SER': 'S', 'THR': 'T', 'VAL': 'V', 'TRP': 'W', 'TYR': 'Y',
     }
 
-    # Try filtered directory first, then output
-    results_dir = output_dir / "filtered"
-    if not results_dir.exists():
-        results_dir = output_dir
+    # Look for final ranked designs (CIF format)
+    final_designs_dir = output_dir / "final_ranked_designs" / "final_10_designs"
+    if not final_designs_dir.exists():
+        final_designs_dir = output_dir / "final_ranked_designs"
+    if not final_designs_dir.exists():
+        final_designs_dir = output_dir
 
-    for pdb_file in sorted(results_dir.glob("**/*.pdb"))[:10]:
-        pdb_content = pdb_file.read_text()
+    print(f"Looking for results in: {final_designs_dir}")
 
-        # Extract sequence from designed binder chain
+    # Load metrics CSV if available
+    metrics_csv = output_dir / "final_ranked_designs" / "final_designs_metrics_10.csv"
+    metrics_data = {}
+    if metrics_csv.exists():
+        print(f"Found metrics CSV: {metrics_csv}")
+        import csv
+        with open(metrics_csv) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                design_id = row.get('design_id', row.get('id', ''))
+                metrics_data[design_id] = row
+                print(f"  Loaded metrics for: {design_id}")
+
+    # Process CIF files (BoltzGen outputs CIF, not PDB)
+    cif_files = sorted(final_designs_dir.glob("*.cif"))
+    print(f"Found {len(cif_files)} CIF files")
+
+    for cif_file in cif_files[:10]:
+        cif_content = cif_file.read_text()
+
+        # Parse CIF to extract sequence and B-factors for binder chain
         seq = []
-        seen = set()
-        for line in pdb_content.split('\n'):
-            if line.startswith('ATOM') and line[12:16].strip() == 'CA':
-                chain = line[21]
-                if chain == binder_chain:  # Only get designed chain
-                    key = (chain, line[22:26].strip())
-                    res = line[17:20].strip()
-                    if key not in seen and res in three_to_one:
-                        seen.add(key)
-                        seq.append(three_to_one[res])
+        plddt_scores = []
+
+        # Parse using gemmi for reliable CIF reading
+        try:
+            structure = gemmi.read_structure(str(cif_file))
+            for model in structure:
+                for chain in model:
+                    if chain.name == binder_chain:
+                        for residue in chain:
+                            if residue.name in three_to_one:
+                                seq.append(three_to_one[residue.name])
+                                # Get B-factor from CA atom
+                                ca = residue.find_atom("CA", "*")
+                                if ca:
+                                    plddt_scores.append(ca.b_iso)
+        except Exception as e:
+            print(f"Error parsing {cif_file}: {e}")
+            continue
+
+        if not seq:
+            print(f"No sequence found in {cif_file.name}")
+            continue
+
+        # Calculate average pLDDT
+        avg_plddt = sum(plddt_scores) / len(plddt_scores) if plddt_scores else 0.0
+
+        # Try to get metrics from CSV
+        design_id = cif_file.stem.replace('rank', '').split('_')[0] if 'rank' in cif_file.stem else cif_file.stem
+        csv_metrics = metrics_data.get(design_id, metrics_data.get(cif_file.stem, {}))
+
+        ptm_score = float(csv_metrics.get('ipTM', csv_metrics.get('ptm', 0.0)))
+        affinity_score = float(csv_metrics.get('affinity', csv_metrics.get('binding_affinity', 0.0)))
+
+        # Confidence from CSV or compute from pLDDT
+        confidence = float(csv_metrics.get('confidence', avg_plddt / 100.0))
+
+        # Convert CIF to PDB for frontend compatibility
+        pdb_content = ""
+        try:
+            structure = gemmi.read_structure(str(cif_file))
+            pdb_content = structure.make_pdb_string()
+        except Exception as e:
+            print(f"Could not convert to PDB: {e}")
+            pdb_content = cif_content  # Fallback to CIF
 
         results.append({
             "rank": len(results) + 1,
             "sequence": ''.join(seq),
             "structure_pdb": pdb_content,
-            "plddt_score": 0.0,
-            "ptm_score": 0.0,
-            "affinity_score": 0.0,
-            "confidence_score": 0.0,
+            "plddt_score": round(avg_plddt, 2),
+            "ptm_score": round(ptm_score, 3),
+            "affinity_score": round(affinity_score, 3),
+            "confidence_score": round(confidence, 3),
         })
+
+        print(f"Result {len(results)}: seq_len={len(seq)}, pLDDT={avg_plddt:.1f}, file={cif_file.name}")
 
     return {"success": True, "results": results, "total_generated": len(results)}
 
@@ -206,8 +294,24 @@ def run_design(
 # For testing: modal run modal_boltzgen.py
 @app.local_entrypoint()
 def main():
-    test_pdb = """ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
-ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00  0.00           C
-END"""
-    result = run_design.remote(test_pdb, num_designs=10)
-    print(result)
+    # Test with a real PDB structure (p53-MDM2, simple 2-chain complex)
+    print("Testing BoltzGen with PDB 1YCR (p53-MDM2)...")
+    result = run_design.remote(
+        target_pdb="",  # Will be ignored since pdb_id is provided
+        pdb_id="1YCR",
+        num_designs=10,
+        binder_length_min=80,
+        binder_length_max=120,
+    )
+
+    print("\n" + "=" * 60)
+    print("FINAL RESULT:")
+    print("=" * 60)
+    print(f"Success: {result.get('success')}")
+    if result.get('error'):
+        print(f"Error: {result.get('error')}")
+        print(f"Failed step: {result.get('failed_step')}")
+    else:
+        print(f"Total generated: {result.get('total_generated')}")
+        for r in result.get('results', [])[:3]:
+            print(f"  Rank {r['rank']}: pLDDT={r['plddt_score']:.1f}, len={len(r['sequence'])}")

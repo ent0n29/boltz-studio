@@ -702,6 +702,22 @@ class BoltzGenRunner:
             ).fetchall()
             return [dict(row) for row in rows]
 
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a job and its results from database."""
+        with get_connection() as conn:
+            # Delete results first (foreign key constraint)
+            conn.execute(
+                "DELETE FROM design_results WHERE job_id = ?",
+                (job_id,),
+            )
+            # Delete the job
+            result = conn.execute(
+                "DELETE FROM design_jobs WHERE id = ?",
+                (job_id,),
+            )
+            conn.commit()
+            return result.rowcount > 0
+
 
 # Singleton instance
 _runner: BoltzGenRunner | None = None
