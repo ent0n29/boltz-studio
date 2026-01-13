@@ -174,3 +174,7 @@ boltz_results_*/
 
 # Boltz Studio database
 *.db
+
+# Internal planning docs (keep local only)
+VISION.md
+CLAUDE.md

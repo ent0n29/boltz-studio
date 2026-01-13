@@ -9,6 +9,9 @@ requires-python = ">=3.11"
 description = "Web UI for protein structure prediction and binder design using Boltz"
 readme = "README.md"
 license = {text = "MIT"}
+authors = [
+    {name = "Antonio Stano"}
+]
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
