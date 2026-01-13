@@ -1,0 +1,11 @@
+entities:
+- protein:
+    cyclic: false
+    id: A
+    sequence: 80..140
+- file:
+    include:
+    - chain:
+        binding: all
+        id: B
+    path: target.pdb

@@ -4,6 +4,7 @@ from .activity import router as activity_router
 from .alignment import router as alignment_router
 from .api_keys import router as api_keys_router
 from .auth import router as auth_router
+from .binder_design import router as binder_design_router
 from .community import router as community_router
 from .design import router as design_router
 from .discovery import router as discovery_router
@@ -22,6 +23,7 @@ __all__ = [
     "alignment_router",
     "api_keys_router",
     "auth_router",
+    "binder_design_router",
     "community_router",
     "design_router",
     "discovery_router",

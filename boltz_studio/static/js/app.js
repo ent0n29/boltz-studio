@@ -19,6 +19,26 @@ let selectedResidue = null;
 // Amino acids
 const AMINO_ACIDS = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y'];
 
+// Theme management
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('boltz-theme', newTheme);
+}
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('boltz-theme');
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+}
+
+// Initialize theme immediately (before DOMContentLoaded)
+initTheme();
+
 // Confirm modal system
 let confirmCallback = null;
 
@@ -97,6 +117,9 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
+    // Restore active tab from previous session
+    restoreActiveTab();
+
     // Sequence input handling
     sequenceInput.addEventListener('input', handleSequenceInput);
     sequenceInput.addEventListener('focus', () => {
@@ -137,13 +160,22 @@ function handleSequenceInput(e) {
 }
 
 // Tab switching
-function switchTab(tabName) {
+function switchTab(tabName, updateUrl = true) {
     document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === tabName);
     });
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === `${tabName}-tab`);
     });
+
+    // Save active tab to localStorage
+    localStorage.setItem('boltz-active-tab', tabName);
+
+    // Update URL
+    if (updateUrl) {
+        const url = tabName === 'predict' ? '/' : `/${tabName}`;
+        history.pushState({ tab: tabName }, '', url);
+    }
 
     if (tabName === 'community') {
         // Load the current view (all designs by default)
@@ -152,6 +184,51 @@ function switchTab(tabName) {
         } else {
             loadDesigns();
         }
+    }
+
+    if (tabName === 'design') {
+        // Load design targets and jobs
+        if (typeof loadDesignTargets === 'function') {
+            loadDesignTargets();
+            loadDesignJobs();
+            if (typeof loadSynthesisOrders === 'function') loadSynthesisOrders();
+        }
+    }
+}
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', (event) => {
+    if (event.state && event.state.tab) {
+        switchTab(event.state.tab, false);
+    } else {
+        // Parse URL to get tab
+        const tab = getTabFromUrl();
+        switchTab(tab, false);
+    }
+});
+
+// Get tab name from current URL
+function getTabFromUrl() {
+    const path = window.location.pathname;
+    if (path === '/design') return 'design';
+    if (path === '/community') return 'community';
+    return 'predict';
+}
+
+// Restore active tab from URL or localStorage
+function restoreActiveTab() {
+    // URL takes priority over localStorage
+    const urlTab = getTabFromUrl();
+    if (urlTab !== 'predict' || window.location.pathname !== '/') {
+        // URL specifies a tab
+        switchTab(urlTab, false);
+        return;
+    }
+
+    // Fall back to localStorage
+    const savedTab = localStorage.getItem('boltz-active-tab');
+    if (savedTab && ['predict', 'design', 'community'].includes(savedTab)) {
+        switchTab(savedTab);
     }
 }
 

@@ -13,7 +13,7 @@ organized into logical modules:
 
 from ...logger import get_logger
 from .connection import DB_PATH, get_connection, get_db_path
-from . import schema_core, schema_social, schema_discovery, schema_orgs, schema_reputation
+from . import schema_core, schema_social, schema_discovery, schema_orgs, schema_reputation, schema_design
 from .migrations import run_migrations
 
 logger = get_logger("database")
@@ -34,11 +34,13 @@ def init_db() -> None:
         schema_discovery.create_tables(conn)
         schema_orgs.create_tables(conn)
         schema_reputation.create_tables(conn)
+        schema_design.create_tables(conn)
 
         # Run migrations for existing tables
         run_migrations(conn)
 
         # Seed default data
         schema_reputation.seed_default_badges(conn)
+        schema_design.seed_curated_targets(conn)
 
     logger.info(f"Database initialized: {DB_PATH}")

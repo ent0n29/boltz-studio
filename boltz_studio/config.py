@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # Paths
     db_path: str = "boltz_studio.db"
+    data_dir: str = "data"  # Directory for job outputs, uploads, etc.
 
     # Job settings
     max_sequence_length: int = 2000
@@ -53,6 +54,10 @@ class Settings(BaseSettings):
 
     # App URL (for OAuth callbacks)
     app_url: str = "http://localhost:8000"
+
+    # Modal.com cloud GPU settings
+    use_modal_gpu: bool = True  # Enable cloud GPU via Modal when local GPU not available
+    modal_max_designs: int = 100  # Max designs per job on Modal (cost control)
 
 
 @lru_cache

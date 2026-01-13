@@ -1,0 +1,11 @@
+entities:
+- protein:
+    id: A
+    sequence: 80..140
+    type: antibody
+- file:
+    include:
+    - chain:
+        binding: all
+        id: B
+    path: target.pdb

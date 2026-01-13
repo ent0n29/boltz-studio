@@ -27,9 +27,26 @@
         <nav class="header-right">
             <nav class="tabs">
                 <button class="tab active" data-tab="predict">Predict</button>
+                <button class="tab" data-tab="design">Design</button>
                 <button class="tab" data-tab="community">Community</button>
             </nav>
             <div class="header-divider"></div>
+            <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
+                <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/>
+                    <line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <svg class="moon-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
             <a href="https://github.com/jwohlwend/boltz" target="_blank">GitHub</a>
             <a href="https://github.com/jwohlwend/boltz#readme" target="_blank">Docs</a>
             <div id="notification-container" style="display: none;">
@@ -543,6 +560,112 @@
             </div>
         </div>
 
+        <!-- Design Tab -->
+        <div class="tab-content" id="design-tab">
+            <div class="design-container">
+                <div class="design-header">
+                    <h1>Binder Design</h1>
+                    <p>Design protein binders for therapeutic targets using BoltzGen</p>
+                </div>
+
+                <!-- Target Selection -->
+                <div class="design-section">
+                    <h2>1. Choose Target</h2>
+                    <div class="target-categories">
+                        <button class="category-btn active" data-category="all" onclick="filterTargets('all')">All Targets</button>
+                        <button class="category-btn" data-category="cancer" onclick="filterTargets('cancer')">Cancer</button>
+                        <button class="category-btn" data-category="infectious_disease" onclick="filterTargets('infectious_disease')">Infectious Disease</button>
+                        <button class="category-btn" data-category="autoimmune" onclick="filterTargets('autoimmune')">Autoimmune</button>
+                        <button class="category-btn" data-category="neurology" onclick="filterTargets('neurology')">Neurology</button>
+                        <button class="category-btn" data-category="metabolic" onclick="filterTargets('metabolic')">Metabolic</button>
+                    </div>
+                    <div class="targets-grid" id="targets-grid">
+                        <!-- Targets loaded dynamically -->
+                    </div>
+                    <div class="upload-custom-target">
+                        <span>Or</span>
+                        <button class="btn btn-outline" onclick="showCustomTargetModal()">Upload Custom Target (PDB)</button>
+                    </div>
+                </div>
+
+                <!-- Design Parameters -->
+                <div class="design-section" id="design-params-section" style="display: none;">
+                    <h2>2. Configure Design</h2>
+                    <div class="design-params">
+                        <div class="param-group">
+                            <label>Protocol</label>
+                            <select id="design-protocol">
+                                <option value="nanobody-anything">Nanobody Design</option>
+                                <option value="antibody-anything">Antibody Design</option>
+                                <option value="peptide-anything">Peptide Design</option>
+                                <option value="protein-anything">General Protein</option>
+                            </select>
+                        </div>
+                        <div class="param-group">
+                            <label>Binder Length</label>
+                            <div class="range-inputs">
+                                <input type="number" id="binder-length-min" value="80" min="10" max="500">
+                                <span>to</span>
+                                <input type="number" id="binder-length-max" value="140" min="10" max="500">
+                                <span>residues</span>
+                            </div>
+                        </div>
+                        <div class="param-group">
+                            <label>Number of Designs</label>
+                            <input type="number" id="num-designs" value="1000" min="100" max="10000" step="100">
+                        </div>
+                        <div class="param-group">
+                            <label>Job Name</label>
+                            <input type="text" id="design-job-name" placeholder="My binder design">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-large" id="start-design-btn" onclick="startDesignJob()">
+                        Start Design
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Design Jobs List -->
+                <div class="design-section">
+                    <h2>Your Design Jobs</h2>
+                    <div class="jobs-list" id="design-jobs-list">
+                        <div class="jobs-empty" id="jobs-empty">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                            <p>No design jobs yet</p>
+                            <p class="hint">Select a target above to start designing binders</p>
+                        </div>
+                        <!-- Jobs loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Synthesis Orders Dashboard -->
+                <div class="design-section" id="orders-section">
+                    <h2>Synthesis Orders</h2>
+                    <div class="orders-list" id="orders-list">
+                        <div class="orders-empty" id="orders-empty">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1">
+                                <path d="M16 16h6"/>
+                                <path d="M16 20h6"/>
+                                <path d="M6 8h12"/>
+                                <path d="M6 12h12"/>
+                                <path d="M2 4h20v16H2z"/>
+                            </svg>
+                            <p>No synthesis orders yet</p>
+                            <p class="hint">Order synthesis from your top design results</p>
+                        </div>
+                        <!-- Orders loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Community Tab -->
         <div class="tab-content" id="community-tab">
             <div class="community-container">
@@ -674,6 +797,273 @@
         </div>
     </main>
 
+    <!-- Target Detail Modal -->
+    <div class="modal" id="target-modal">
+        <div class="modal-backdrop" onclick="hideTargetModal()"></div>
+        <div class="modal-content target-modal">
+            <div class="modal-header">
+                <div>
+                    <h2 id="target-modal-name">Target Name</h2>
+                    <div class="target-modal-badges">
+                        <span class="target-category-badge" id="target-modal-category">Category</span>
+                        <span class="difficulty" id="target-modal-difficulty">medium</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="hideTargetModal()">&times;</button>
+            </div>
+            <div class="target-modal-body">
+                <div class="target-modal-viewer">
+                    <div id="target-viewer-3d"></div>
+                    <div class="viewer-controls">
+                        <button class="btn btn-outline btn-small" onclick="resetTargetView()">Reset View</button>
+                        <button class="btn btn-outline btn-small" onclick="toggleBindingSite()">
+                            <span id="binding-site-toggle-text">Show Binding Site</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="target-modal-info">
+                    <p id="target-modal-description" class="target-description-full"></p>
+
+                    <div class="target-modal-details">
+                        <div class="detail-row">
+                            <span class="detail-label">PDB ID</span>
+                            <span class="detail-value" id="target-modal-pdb">-</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">UniProt</span>
+                            <span class="detail-value" id="target-modal-uniprot">-</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Organism</span>
+                            <span class="detail-value" id="target-modal-organism">-</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Therapeutic Area</span>
+                            <span class="detail-value" id="target-modal-therapeutic">-</span>
+                        </div>
+                    </div>
+
+                    <div class="target-modal-stats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="target-modal-designs">0</div>
+                            <div class="stat-label">Designs</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="target-modal-success">0</div>
+                            <div class="stat-label">Successful</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-large" id="select-target-btn" onclick="selectTargetFromModal()">
+                        Design Binders for This Target
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Design Results Modal -->
+    <div class="modal" id="design-results-modal">
+        <div class="modal-backdrop" onclick="hideDesignResultsModal()"></div>
+        <div class="modal-content design-results-modal">
+            <div class="modal-header">
+                <h2>Design Results</h2>
+                <button class="modal-close" onclick="hideDesignResultsModal()">&times;</button>
+            </div>
+            <div class="results-modal-body">
+                <div class="results-list-section">
+                    <div class="results-list" id="design-results-list">
+                        <!-- Results loaded dynamically -->
+                    </div>
+                </div>
+                <div class="result-detail-section" id="result-detail-section" style="display: none;">
+                    <div class="result-viewer">
+                        <div id="result-viewer-3d"></div>
+                        <div class="legend" id="result-legend">
+                            <div class="legend-title">Confidence (pLDDT)</div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#0053D6"></span> Very high (>90)</div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#65CBF3"></span> High (70-90)</div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#FFDB13"></span> Medium (50-70)</div>
+                            <div class="legend-item"><span class="legend-dot" style="background:#FF7D45"></span> Low (<50)</div>
+                        </div>
+                    </div>
+                    <div class="result-info">
+                        <h3>Rank #<span id="result-detail-rank">1</span></h3>
+                        <div class="result-scores-detail">
+                            <div class="score-item">
+                                <span class="score-label">pLDDT</span>
+                                <span class="score-value" id="result-detail-plddt">-</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label">pTM</span>
+                                <span class="score-value" id="result-detail-ptm">-</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-label">Confidence</span>
+                                <span class="score-value" id="result-detail-confidence">-</span>
+                            </div>
+                        </div>
+                        <div class="result-sequence-full">
+                            <label>Sequence (<span id="result-detail-length">0</span> residues)</label>
+                            <div class="sequence-display" id="result-detail-sequence"></div>
+                        </div>
+                        <div class="result-actions-detail">
+                            <button class="btn btn-outline" onclick="downloadCurrentResultPdb()">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                Download PDB
+                            </button>
+                            <button class="btn btn-outline" onclick="showOrderSynthesisModal()">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                                    <line x1="3" y1="6" x2="21" y2="6"/>
+                                    <path d="M16 10a4 4 0 0 1-8 0"/>
+                                </svg>
+                                Order Synthesis
+                            </button>
+                            <button class="btn btn-primary" id="publish-result-btn" onclick="publishCurrentResult()">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                                    <polyline points="16 6 12 2 8 6"/>
+                                    <line x1="12" y1="2" x2="12" y2="15"/>
+                                </svg>
+                                Publish to Community
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Synthesis Order Modal -->
+    <div class="modal" id="synthesis-modal">
+        <div class="modal-backdrop" onclick="hideSynthesisModal()"></div>
+        <div class="modal-content synthesis-modal">
+            <div class="modal-header">
+                <h2>Order Synthesis</h2>
+                <button class="modal-close" onclick="hideSynthesisModal()">&times;</button>
+            </div>
+            <div class="synthesis-form">
+                <div class="form-group">
+                    <label>Provider</label>
+                    <select id="synthesis-provider">
+                        <option value="twist">Twist Bioscience</option>
+                        <option value="idt">IDT (Integrated DNA Technologies)</option>
+                        <option value="genscript">GenScript</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Order Type</label>
+                    <select id="synthesis-type">
+                        <option value="plasmid">Plasmid (gene in vector)</option>
+                        <option value="dna">DNA Fragment</option>
+                        <option value="protein">Recombinant Protein</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Codon Optimization</label>
+                    <select id="synthesis-codon">
+                        <option value="E. coli">E. coli</option>
+                        <option value="CHO">CHO (mammalian)</option>
+                        <option value="HEK293">HEK293 (human)</option>
+                        <option value="Yeast">Yeast</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notes (optional)</label>
+                    <textarea id="synthesis-notes" placeholder="Special instructions..."></textarea>
+                </div>
+                <div class="synthesis-estimate">
+                    <span class="estimate-label">Estimated Cost:</span>
+                    <span class="estimate-value" id="synthesis-cost">$200-400</span>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="hideSynthesisModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitSynthesisOrder()">Place Order</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lab Validation Modal -->
+    <div class="modal" id="validation-modal">
+        <div class="modal-backdrop" onclick="hideValidationModal()"></div>
+        <div class="modal-content validation-modal">
+            <div class="modal-header">
+                <h2>Record Lab Validation</h2>
+                <button class="modal-close" onclick="hideValidationModal()">&times;</button>
+            </div>
+            <div class="validation-form">
+                <p class="validation-intro">
+                    Record the results of your experimental validation to help others identify successful designs.
+                </p>
+                <div class="form-group">
+                    <label>Validation Type</label>
+                    <select id="validation-type">
+                        <option value="binding_assay">Binding Assay (SPR/BLI)</option>
+                        <option value="elisa">ELISA</option>
+                        <option value="cell_assay">Cell-based Assay</option>
+                        <option value="expression">Expression/Purification</option>
+                        <option value="stability">Stability (DSF/SEC)</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Result</label>
+                    <div class="result-buttons">
+                        <button class="result-btn success" onclick="setValidationResult('success')">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            Success
+                        </button>
+                        <button class="result-btn partial" onclick="setValidationResult('partial')">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Partial
+                        </button>
+                        <button class="result-btn failure" onclick="setValidationResult('failure')">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                            Failure
+                        </button>
+                    </div>
+                    <input type="hidden" id="validation-result" value="">
+                </div>
+                <div class="form-group">
+                    <label>Measured Affinity (optional)</label>
+                    <div class="affinity-input">
+                        <input type="number" id="validation-kd" placeholder="e.g., 50" step="0.1">
+                        <select id="validation-kd-unit">
+                            <option value="nM">nM</option>
+                            <option value="uM">uM</option>
+                            <option value="pM">pM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="validation-notes" placeholder="Describe your experimental conditions, protocol, and observations..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="hideValidationModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="submitValidation()">Submit Validation</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Organization Modal -->
     <div id="org-modal" class="modal" style="display: none;">
     </div>
@@ -687,5 +1077,6 @@
     <script src="/js/notifications.js"></script>
     <script src="/js/reputation.js"></script>
     <script src="/js/organizations.js"></script>
+    <script src="/js/binder-design.js"></script>
 </body>
 </html>

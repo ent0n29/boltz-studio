@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "boltz-studio"
-version = "0.1.0"
-requires-python = ">=3.10"
-description = "Web UI for protein structure prediction using Boltz"
+version = "0.2.0"
+requires-python = ">=3.11"
+description = "Web UI for protein structure prediction and binder design using Boltz"
 readme = "README.md"
 license = {text = "MIT"}
 dependencies = [
@@ -22,6 +22,8 @@ dependencies = [
     "itsdangerous>=2.1",
     "email-validator>=2.0",
     "biopython>=1.80",
+    "boltzgen>=0.2.0",
+    "sse-starlette>=1.6.0",
 ]
 
 [project.scripts]

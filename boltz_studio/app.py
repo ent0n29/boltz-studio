@@ -19,6 +19,7 @@ from .routes import (
     alignment_router,
     api_keys_router,
     auth_router,
+    binder_design_router,
     community_router,
     design_router,
     discovery_router,
@@ -122,6 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(alignment_router)
     app.include_router(api_keys_router)
     app.include_router(auth_router)
+    app.include_router(binder_design_router)
     app.include_router(community_router)
     app.include_router(discovery_router)
     app.include_router(export_router)

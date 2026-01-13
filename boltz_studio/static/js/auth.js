@@ -7,6 +7,7 @@ async function checkAuth() {
         const res = await fetch('/auth/me');
         if (res.ok) {
             currentUser = await res.json();
+            window.currentUser = currentUser;  // Make available globally
             updateAuthUI();
         }
     } catch (err) {
@@ -108,6 +109,7 @@ async function logout() {
     try {
         await fetch('/auth/logout', { method: 'POST' });
         currentUser = null;
+        window.currentUser = null;
         updateAuthUI();
     } catch (err) {
         console.error('Logout failed:', err);
