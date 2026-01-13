@@ -278,6 +278,7 @@ async def cancel_job(
 async def delete_job(
     job_id: str,
     user: RequiredUser,
+    force: bool = Query(False, description="Force delete even if job appears to be running"),
 ):
     """Delete a design job and its results."""
     runner = get_boltzgen_runner()
@@ -289,10 +290,11 @@ async def delete_job(
     if job["user_id"] != user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Don't allow deleting running jobs
-    running_statuses = ["queued", "generating", "folding", "analyzing", "filtering", "downloading_models"]
-    if job["status"] in running_statuses:
-        raise HTTPException(status_code=400, detail="Cannot delete a running job. Cancel it first.")
+    # Don't allow deleting running jobs (must cancel first) - unless force=true
+    if not force:
+        running_statuses = ["queued", "generating", "folding", "analyzing", "filtering", "downloading_models"]
+        if job["status"] in running_statuses:
+            raise HTTPException(status_code=400, detail="Cannot delete a running job. Cancel it first, or use force delete.")
 
     deleted = runner.delete_job(job_id)
 

@@ -4217,6 +4217,10 @@ h1 {
     color: var(--error);
 }
 
+.btn-cancel:hover {
+    color: var(--warning, #f59e0b);
+}
+
 .btn-link {
     background: none;
     border: none;

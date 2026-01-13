@@ -373,7 +373,7 @@ function renderDesignJobs() {
         return;
     }
 
-    const isRunning = (status) => ['queued', 'generating', 'folding', 'analyzing', 'filtering'].includes(status);
+    const isRunning = (status) => ['queued', 'generating', 'folding', 'analyzing', 'filtering', 'downloading_models'].includes(status);
 
     list.innerHTML = filteredJobs.map(job => `
         <div class="job-card" data-job-id="${job.id}">
@@ -381,13 +381,20 @@ function renderDesignJobs() {
                 <h4 class="job-name">${escapeHtml(job.name)}</h4>
                 <div class="job-header-actions">
                     <span class="job-status ${job.status}">${formatJobStatus(job.status)}</span>
-                    ${!isRunning(job.status) ? `
+                    ${isRunning(job.status) ? `
+                        <button class="btn-icon btn-cancel" onclick="cancelJob('${job.id}')" title="Cancel job">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M15 9l-6 6M9 9l6 6"/>
+                            </svg>
+                        </button>
+                    ` : `
                         <button class="btn-icon btn-delete" onclick="deleteJob('${job.id}')" title="Delete job">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                             </svg>
                         </button>
-                    ` : ''}
+                    `}
                 </div>
             </div>
             <div class="job-meta">
@@ -445,6 +452,56 @@ function toggleJobError(jobId) {
     const el = document.getElementById(`error-${jobId}`);
     if (el) {
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+async function cancelJob(jobId) {
+    if (!confirm('Cancel this running job?')) return;
+
+    try {
+        const res = await fetch(`/api/design/jobs/${jobId}/cancel`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        if (res.ok) {
+            // Update local job status
+            const job = designJobs.find(j => j.id === jobId);
+            if (job) job.status = 'cancelled';
+            renderDesignJobs();
+            if (window.showToast) showToast('Job cancelled');
+        } else {
+            // Cancel failed - job might be stuck, offer force delete
+            if (confirm('Could not cancel job (it may be stuck). Force delete it?')) {
+                await forceDeleteJob(jobId);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to cancel job:', err);
+        if (confirm('Could not cancel job. Force delete it?')) {
+            await forceDeleteJob(jobId);
+        }
+    }
+}
+
+async function forceDeleteJob(jobId) {
+    try {
+        const res = await fetch(`/api/design/jobs/${jobId}?force=true`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (res.ok) {
+            designJobs = designJobs.filter(j => j.id !== jobId);
+            renderDesignJobs();
+            if (window.showToast) showToast('Job force deleted');
+        } else {
+            const data = await res.json();
+            if (window.showToast) showToast(data.detail || 'Failed to delete job', 'error');
+        }
+    } catch (err) {
+        console.error('Failed to force delete job:', err);
+        if (window.showToast) showToast('Failed to delete job', 'error');
     }
 }
 
